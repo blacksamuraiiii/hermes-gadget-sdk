@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Firmware
+
+- Audio written right after a speaker stream starts is no longer thrown away on boards whose speaker task empties its queue after an abort: I2S speakers, and codec speakers without `codec.speaker_pa`. `begin()` aborts the stream before it, and the task emptied the queue on its next pass, so audio queued in between, such as a short tone written at once, could go with it. When `begin()` replaces a stream it now waits for that reset, at most 6 ticks (about 60 ms), as the P4 speaker also waits in `begin()`, so `write()` stays non-blocking, and an idle speaker starts at once. The task drops what it received while a reset was pending, and a codec cuts a stream's silent tail short when the next stream waits. A codec stream that closes with nothing played also no longer leaves `busy()` true until the next stream, which kept the screen from sleeping.
+
+
 ### Hardware and setup
 
 - The Waveshare Touch-LCD-1.54 (SKUs 33868/33869) now uses its CST816 touchscreen, and the PWR key of every LCD-1.54 works: a short press turns the screen off and on, and holding it for 2.5 seconds powers the board off on battery. Battery latches can now read a power key on a GPIO (`latch_power.key`, active low). On the non-touch SKUs the touchscreen is reported absent. Contributed by Luiz Gustavo Saraiva (@luizgustavosaraiva).
