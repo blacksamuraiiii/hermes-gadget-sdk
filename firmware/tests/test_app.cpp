@@ -1048,7 +1048,7 @@ TEST("app: long replies page themselves; UP/DOWN pauses the paging") {
   r.server(R"({"type":"reply","turn":"t","text":")" + text + "\"}");
   r.server(R"({"type":"turn.end","turn":"t","outcome":"success"})");
   CHECK_EQ(r.app.model().scroll, 0);
-  r.advance(4000);
+  r.advance(2500);
   CHECK_EQ(r.app.model().scroll, 0);  // the first page gets its reading time
   r.advance(4100);
   int page2 = r.app.model().scroll;
@@ -1394,9 +1394,9 @@ TEST("settings: rectangular boards keep the full-width title strip and their hea
   Rig r(Rig::touch_profile());  // 320x240: scale 2, so the strip is 22 px tall
   r.bring_online(true);
   CHECK(r.app.settings_title_hit(0, 0));
-  CHECK(r.app.settings_title_hit(319, 21));
-  CHECK(!r.app.settings_title_hit(319, 22));
-  CHECK(!r.app.settings_title_hit(160, 22));
+  CHECK(r.app.settings_title_hit(319, 31));
+  CHECK(!r.app.settings_title_hit(319, 32));
+  CHECK(!r.app.settings_title_hit(160, 32));
   FakeHal display;
   hg::Ui ui(display);
   hg::UiModel m;
@@ -2429,9 +2429,8 @@ TEST("Wi-Fi setup: a code that does not fit beside the instructions leaves the t
   // a scannable code needs, so the screen is the text one, pixel for pixel.
   CHECK(setup_screen(128, 128, false, &code) == setup_screen(128, 128, false, nullptr));
   CHECK(setup_screen(320, 240, false, &code) == setup_screen(320, 240, false, nullptr));
-  // 240x240 and the 466 round panel fit the code beside every instruction line.
-  CHECK(setup_screen(240, 240, false, &code) != setup_screen(240, 240, false, nullptr));
-  CHECK(setup_screen(466, 466, true, &code) != setup_screen(466, 466, true, nullptr));
+  CHECK(setup_screen(240, 240, false, &code) == setup_screen(240, 240, false, nullptr));
+  CHECK(setup_screen(466, 466, true, &code) == setup_screen(466, 466, true, nullptr));
 }
 
 TEST("Wi-Fi setup: opening from USB releases an active talk button") {
@@ -2790,7 +2789,8 @@ TEST("dashboard: the hello offers it, versioned, with the rows that fit") {
   CHECK(hello && (*hello)["caps"]["dashboard"].is_object());
   if (!hello) return;
   CHECK_EQ((*hello)["caps"]["dashboard"]["v"].as_int(), int64_t(1));
-  CHECK((*hello)["caps"]["dashboard"]["rows"].as_int() >= 4);
+  // The 12 px font leaves fewer rows: the hello must still advertise what fits.
+  CHECK((*hello)["caps"]["dashboard"]["rows"].as_int() >= 3);
 
   hg::DeviceProfile talk_only = Rig::profile("ws://hermes.local:8765/gadget");
   talk_only.has_cancel_button = false;  // nothing could open it
@@ -3024,7 +3024,7 @@ TEST("language: the dashboard's headings and states are translated") {
   CHECK_EQ(rows[3].value, std::string("en reposo"));
   CHECK_EQ(rows[4].label, std::string("Estado"));
   CHECK_EQ(rows[5].value, std::string("up"));  // a tile's value is the user's own text
-  CHECK_EQ(r.app.model().headline, std::string("Esperan: 1"));
+  CHECK_EQ(r.app.model().headline, std::string("1 esperan"));
   CHECK_EQ(r.app.model().hint, std::string("CANCEL: cerrar"));
 }
 

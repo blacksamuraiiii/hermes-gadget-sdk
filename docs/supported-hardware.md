@@ -20,6 +20,7 @@ Hardware ports remain experimental until the [verification table](hardware-valid
 | [Xorigin AIPI Lite](hardware.md#xorigin-aipi-lite) | Hold BOOT to talk; the power key cancels | Onboard microphone and speaker |
 | [Spotpear ESP32-S3-1.28-BOX](hardware.md#spotpear-esp32-s3-128-box) | Hold the screen or BOOT to talk; swipe down to cancel | Onboard microphone and speaker; battery |
 | [Spotpear ESP32-S3-1.54 muma](hardware.md#spotpear-esp32-s3-154-muma) | Hold the screen or BOOT to talk; swipe down to cancel | Onboard microphone and speaker |
+| [Movecall Moji](hardware.md#movecall-moji-esp32s3) | Hold BOOT to talk; no cancel key, no touch | Onboard analog microphone and speaker; USB power only, no battery |
 | [Espressif ESP32-S3-BOX-3](hardware.md#esp32-s3-box-3) | Hold the screen or BOOT to talk | Onboard microphones and speaker |
 | [M5Stack CoreS3](hardware.md#m5stack-cores3) | Hold the screen to talk | Onboard microphones and speaker; battery management |
 | [LilyGO T-Display-S3](hardware.md#lilygo-t-display-s3) | BOOT and Button2; send text through the USB console | No onboard microphone or speaker |

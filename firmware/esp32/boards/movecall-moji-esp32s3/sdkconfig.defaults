@@ -1,0 +1,31 @@
+# Movecall Moji: ESP32-S3-WROOM-1-N16R8 (8 MB octal PSRAM), 16 MB flash, 1.28"
+# round 240x240 GC9A01 over SPI, one ES8311 for both directions with an analog
+# microphone, NS4150B amplifier, BOOT key, white status LED. No battery, no
+# touch, no IMU, no SD.
+# Pins: docs/hardware.md#movecall-moji-esp32-s3
+CONFIG_IDF_TARGET="esp32s3"
+# CONFIG_ESPTOOLPY_FLASHSIZE_4MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# The whole-panel framebuffer and the audio buffers go to PSRAM.
+CONFIG_SPIRAM_USE_MALLOC=y
+# If PSRAM ever fails to start, boot anyway so the log and `diag` can say so.
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# The board's only port is the S3's own USB Serial/JTAG, so the console must live
+# there: a secondary console is output-only, and commands typed over USB would
+# never arrive.
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_HG_BOARD_MOVECALL_MOJI=y
+
+# The link is the USB cable, not Wi-Fi: messages become SLIP frames on the
+# console port and tools/usb_relay.py bridges them to the plugin. Comment this
+# line out to return to the WebSocket-over-Wi-Fi transport (no code changes).
+CONFIG_HG_LINK_USB_SERIAL=y
+
+# The relay ignores the host and uses only the path, so this placeholder is
+# enough; it also survives an NVS erase (the Web Serial installer wipes it).
+CONFIG_HG_DEFAULT_SERVER_URL="ws://usb/gadget"

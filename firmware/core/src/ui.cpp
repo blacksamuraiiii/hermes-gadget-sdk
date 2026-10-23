@@ -53,9 +53,23 @@ class Hash {
 
 std::string fit(std::string_view s, int max_chars) {
   if (max_chars <= 0) return {};
-  if (static_cast<int>(s.size()) <= max_chars) return std::string(s);
-  if (max_chars <= 2) return std::string(s.substr(0, static_cast<size_t>(max_chars)));
-  return std::string(s.substr(0, static_cast<size_t>(max_chars - 2))) + "..";
+  if (font::columns(s) <= max_chars) return std::string(s);
+  // Leave two columns for the ellipsis; never cut inside a UTF-8 sequence.
+  const int keep = max_chars <= 2 ? max_chars : max_chars - 2;
+  std::string out;
+  int width = 0;
+  size_t i = 0;
+  while (i < s.size()) {
+    const size_t start = i;
+    const uint32_t cp = font::decode(s, i);
+    if (i == start) break;
+    const int cols = (cp != 0 && cp < 0x80) ? 1 : 2;
+    if (width + cols > keep) break;
+    out.append(s.substr(start, i - start));
+    width += cols;
+  }
+  if (max_chars > 2) out += "..";
+  return out;
 }
 
 int cols_for(int width_px, int scale) { return width_px / (font::kCellWidth * scale); }

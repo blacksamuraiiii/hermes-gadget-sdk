@@ -1,5 +1,22 @@
 menu "Hermes Gadget"
 
+    config HG_LINK_USB_SERIAL
+        bool "Use the USB Serial/JTAG port as the link (no Wi-Fi needed)"
+        default n
+        help
+            Send messages to the host as SLIP frames on the same USB port the
+            console log uses, and run tools/usb_relay.py on the host to bridge
+            them to the Hermes plugin. The device needs no IP address and the
+            console keeps working. Off: the WebSocket-over-Wi-Fi transport.
+
+    config HG_LINK_USB_PATH
+        string "WebSocket path the relay connects to"
+        default "/gadget"
+        depends on HG_LINK_USB_SERIAL
+        help
+            The path the relay asks the plugin for. The host and port come from
+            the relay's --target.
+
     menu "Defaults (overridable from the serial console)"
         config HG_DEFAULT_NAME
             string "Device name"
@@ -95,6 +112,8 @@ menu "Hermes Gadget"
             bool "Spotpear ESP32-S3-1.54 muma (experimental, ST7789 240x240, CST816D, ES8311)"
         config HG_BOARD_SPOTPEAR_BOX128
             bool "Spotpear ESP32-S3-1.28-BOX (experimental, round GC9A01 240x240, CST816D, ES8311)"
+        config HG_BOARD_MOVECALL_MOJI
+            bool "Movecall Moji (round GC9A01 240x240, ES8311 with an analog mic, BOOT key)"
         config HG_BOARD_CROWPANEL_21
             bool "Elecrow CrowPanel 2.1-inch HMI (480x480 RGB, rotary, touch)"
         config HG_BOARD_CROWPANEL_50

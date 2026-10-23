@@ -231,7 +231,12 @@ void Wifi::tick(hg::App& app, uint32_t now) {
   if (auto_setup_) {
     auto_setup_ = false;
     auto_setup_tried_ = true;
+#if CONFIG_HG_LINK_USB_SERIAL
+    // The link is the cable, so there is nothing to set up: an access point
+    // would only take the screen over with instructions nobody has to follow.
+#else
     app.start_wifi_setup();
+#endif
   }
   if (joining_ && now - trial_at_ >= 30000) {
     reconfigure();

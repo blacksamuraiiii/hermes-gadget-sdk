@@ -186,6 +186,37 @@ class WsTransport final : public hg::Transport {
   uint8_t rx_opcode_ = 0;
 };
 
+// USB Serial/JTAG link (CONFIG_HG_LINK_USB_SERIAL): SLIP frames over the console
+// port, bridged to the plugin by tools/usb_relay.py on the host. No Wi-Fi and no
+// IP address; the console keeps working through the same reader.
+class SerialLink final : public hg::Transport {
+ public:
+  bool begin();  // installs the driver and starts both tasks; call once
+  void connect(const std::string& url, const std::string& subprotocol) override;
+  bool send_text(std::string_view text) override;
+  bool send_binary(const uint8_t* data, size_t len) override;
+  void close() override;
+  uint32_t generation() const { return gens_.current(); }
+  bool take_lost() { return gens_.take_lost(); }
+  bool stuck() const;
+
+ private:
+  struct Frame {
+    uint8_t type;
+    uint16_t len;
+    uint8_t* data;
+  };
+  static void rx_task(void* arg);
+  static void tx_task(void* arg);
+  bool enqueue(uint8_t type, const void* data, size_t len);
+  void on_frame(uint8_t type, const uint8_t* data, size_t len);
+  QueueHandle_t tx_ = nullptr;
+  hg::ws::Generations gens_;
+  hg::ws::TxWatch watch_;
+  std::atomic<bool> linked_{false};
+  std::string path_, subprotocol_;
+};
+
 // ESP-IDF RGB timing bus with ST7701 command initialization on 3-wire SPI.
 class RgbDisplay final : public hg::Display {
  public:

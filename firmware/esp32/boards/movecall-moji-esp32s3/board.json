@@ -1,0 +1,6 @@
+{
+  "title": "Movecall Moji (ESP32-S3)",
+  "summary": "Experimental. Round 1.28\" 240x240 screen, an analog microphone and a speaker, one BOOT key. No battery, no touch.",
+  "docs": "docs/hardware.md#movecall-moji-esp32-s3",
+  "ready_made": true
+}

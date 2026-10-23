@@ -54,7 +54,7 @@ from gateway.platforms.base import (
 from gateway.platforms.event import MessageEvent, MessageType
 
 from . import audio as gaudio
-from . import dashboard, imaging, ota, runtime, textfmt
+from . import dashboard, imaging, notify, ota, runtime, textfmt
 from .battery_log import BatteryLog
 from .hub import DeviceHub, DeviceSession, HubDelegate
 from .store import DeviceStore
@@ -67,12 +67,14 @@ PAIRING_TTL_S = 3600          # mirrors Hermes's pairing-code lifetime
 PAIRING_POLL_S = 2.0
 PAIRING_GRACE_S = 6.0
 UPDATE_POLL_S = 3.0           # how often staged firmware ('hermes gadget update') is looked for
+RELAY_WATCH_S = 120.0         # how often the configured USB relay is checked and restarted
 DASHBOARD_POLL_S = 2.0        # how often tiles ('hermes gadget tile') and expiries are looked at
 DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as one dashboard
 # Trigger text for Hermes's unauthorized-DM flow. Never reaches the agent while the
 # device is unpaired; if approval races it, it is a cheap read-only command.
 PAIRING_TRIGGER = "/status"
 HOST_ONLY_TEXT = "Can't show all of it here. Approve or deny it on the host."
+VOICE_OFF_NOTICE = "Voice is off. This screen only shows reminders."
 _PAIRING_CMD = re.compile(r"(hermes\s+(?:-p\s+\S+\s+)?pairing\s+approve\s+\S+\s+([A-Z2-9]{8}))\b")
 # The gateway echoes speech-to-text results with this translated line: a microphone emoji and the
 # quoted transcript, quoted per language (Ukrainian uses «»). Patterns are built from the line itself.
@@ -189,6 +191,18 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         self._auto_home = _flag(extra.get("auto_home"), True)
         self._battery_log_on = _flag(extra.get("battery_log"), False)
         self._dashboard_on = _flag(extra.get("dashboard"), True)
+        self._reminders_on = _flag(extra.get("reminders"), True)
+        # Off turns the device into a reminders-only screen: a recording is answered with a
+        # notice and never becomes a turn (no speech-to-text, no model call).
+        self._voice_on = _flag(extra.get("voice"), True)
+        # Windows-only convenience: run a relay start command with the gateway and a stop
+        # command when it goes away, so the device's USB link lives as long as Hermes does.
+        # Empty = manage the relay yourself (tools/relay.sh).
+        self._relay_start_cmd = str(extra.get("relay_start") or "").strip()
+        self._relay_stop_cmd = str(extra.get("relay_stop") or "").strip()
+        self._relay_task: Optional[asyncio.Task] = None
+        self._reminder_min_turn_s = float(extra.get("reminder_min_turn_s") or notify.MIN_TURN_S)
+        self._cue_cache: Dict[Tuple[str, int], bytes] = {}
         self._tiles: Optional[dashboard.TileStore] = None
         self._dashboard_task: Optional[asyncio.Task] = None
         self._dashboard_wake: Optional[asyncio.Event] = None
@@ -209,6 +223,57 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         self._new_requested: Dict[str, float] = {}  # device id -> when it asked for a new session
 
     # -- lifecycle ------------------------------------------------------------------
+
+    def _relay_hook_cmd(self, which: str) -> str:
+        return self._relay_start_cmd if which == "start" else self._relay_stop_cmd
+
+    async def run_relay_hook(self, which: str, *, quiet: bool = False) -> str:
+        """Run the configured relay start/stop command; return what it printed."""
+        cmd = self._relay_hook_cmd(which)
+        if not cmd:
+            return ""
+        # start_new_session: a gateway shutdown signals its own process group, and a console
+        # command in that group dies before it can stop the relay (observed as "exit -2").
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True)
+        out, _ = await proc.communicate()
+        text = (out or b"").decode("utf-8", "replace").strip()
+        first = text.splitlines()[0] if text else f"exit {proc.returncode}"
+        if not quiet:
+            logger.info("[%s] relay %s: %s", self.name, which, first)
+        return text
+
+    async def start_relay_if_configured(self, *, quiet: bool = False) -> bool:
+        """Bring the USB relay up with the gateway (Windows host; see extras relay_start)."""
+        if not self._relay_start_cmd:
+            return False
+        try:
+            out = await self.run_relay_hook("start", quiet=quiet)
+        except Exception as exc:  # a missing relay must not take the platform down
+            logger.warning("[%s] could not start the relay: %s", self.name, exc)
+            return False
+        return "relay started" in out or "already running" in out
+
+    async def stop_relay_if_configured(self) -> None:
+        """Stop the relay on shutdown: it exists only for this gateway (see extras relay_stop)."""
+        if not self._relay_stop_cmd:
+            return
+        try:
+            await self.run_relay_hook("stop")
+        except Exception as exc:
+            logger.warning("[%s] could not stop the relay: %s", self.name, exc)
+
+    async def _watch_relay(self) -> None:
+        """Keep the relay alive: a crashed relay, a pulled cable or a USB re-enumeration
+        otherwise leaves the device offline until someone notices by hand."""
+        up: Optional[bool] = None
+        while True:
+            await asyncio.sleep(RELAY_WATCH_S)
+            ok = await self.start_relay_if_configured(quiet=True)
+            if ok != up:
+                logger.info("[%s] relay watchdog: %s", self.name, "running" if ok else "not running")
+                up = ok
 
     def _ssl_context(self) -> Optional[ssl.SSLContext]:
         if not self._tls_cert:
@@ -239,6 +304,10 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             self._set_fatal_error(
                 "gadget_listen_failed", f"Cannot listen on {self._host}:{self._port}: {exc}", retryable=True)
             return False
+        # The USB relay dials back into this port, so it starts once we are listening.
+        await self.start_relay_if_configured()
+        if self._relay_start_cmd and (self._relay_task is None or self._relay_task.done()):
+            self._relay_task = asyncio.create_task(self._watch_relay())
         self._loop = asyncio.get_running_loop()
         self._registry_key = getattr(self, "_owner_profile", None) or "default"
         runtime.register(self._registry_key, self)
@@ -250,6 +319,7 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             self._board_unsubscribe = dashboard.BOARD.subscribe(self._board_changed)
             self._dashboard_task = asyncio.create_task(self._watch_dashboard())
         self._mark_connected()
+        notify.BRIDGE.configure(enabled=self._reminders_on, min_turn_s=self._reminder_min_turn_s)
         self._wire_plugin_handlers(None)
         logger.info("[%s] devices connect to %s://<this host>:%s%s", self.name,
                     "wss" if ssl_ctx else "ws", self._hub.bound_port, self._hub.path)
@@ -260,13 +330,14 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if self._board_unsubscribe:
             self._board_unsubscribe()
             self._board_unsubscribe = None
-        for task in (self._watch_task, self._update_task, self._dashboard_task):
+        for task in (self._watch_task, self._update_task, self._dashboard_task, self._relay_task):
             if task:
                 task.cancel()
-        self._watch_task = self._update_task = self._dashboard_task = None
+        self._watch_task = self._update_task = self._dashboard_task = self._relay_task = None
         if self._hub:
             await self._hub.stop()
             self._hub = None
+        await self.stop_relay_if_configured()
         self._mark_disconnected()
 
     @property
@@ -472,6 +543,13 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         await self.handle_message(self._event(session, msg_id, text, message_type=MessageType.TEXT))
 
     async def on_utterance(self, session: DeviceSession, msg_id: str, wav: bytes, seconds: float) -> None:
+        if not self._voice_on:
+            # Reminders-only screen: answer on the spot and start no turn at all. The reply
+            # (plus a turn end) is what lifts the device out of its thinking screen; a
+            # notice alone would leave it waiting until the firmware's 3 min timeout.
+            await session.send_reply(VOICE_OFF_NOTICE)
+            await session.turn_end("")
+            return
         path = await cache_audio_from_bytes_async(wav, ".wav")
         logger.debug("[%s] %.1fs utterance from %s -> %s", self.name, seconds, session.device_id, path)
         await self.handle_message(self._event(
@@ -751,6 +829,59 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             return SendResult(success=False, error=str(exc))
         await session.play_pcm(pcm, session.speaker_rate, turn=self._turns.get(session.device_id))
         return SendResult(success=True, message_id=uuid.uuid4().hex[:12])
+
+    # -- reminders: a fixed cue and a fixed card, no turn and no TTS call -------------
+
+    def _cue_path(self, cue: str):
+        from plugins.plugin_storage import plugin_data_dir
+
+        return plugin_data_dir(PLATFORM_NAME) / "cues" / f"{cue}.wav"
+
+    async def _cue_pcm(self, cue: str, rate: int) -> Optional[bytes]:
+        """Decoded cue samples at the device's rate, cached (a cue is the same every time)."""
+        cached = self._cue_cache.get((cue, rate))
+        if cached is not None:
+            return cached
+        path = self._cue_path(cue)
+        if not path.is_file():
+            return None  # no cue cut yet: the card still goes out
+        try:
+            pcm = await asyncio.to_thread(gaudio.decode_file, str(path), rate)
+        except Exception as exc:  # unreadable or undecodable file: say so, keep the card
+            logger.warning("[%s] cannot load cue %s: %s", self.name, path, exc)
+            return None
+        self._cue_cache[(cue, rate)] = pcm
+        return pcm
+
+    async def push_reminder(self, cue: str, title: str, body: str = "", ttl_s: float = 20.0,
+                            spec: Optional[Dict[str, Any]] = None) -> bool:
+        """Play a pre-cut cue on the gadget, then show a fixed card.
+
+        Called from a plugin hook on an agent thread through the hub's loop. It
+        deliberately starts no turn and calls no text-to-speech: the cue is a file
+        cut once by tools/make_cues.py, so a reminder costs neither tokens nor a
+        network round trip. The audio comes first because playing it lights a
+        sleeping screen, and the server holds cards for a dark screen.
+        """
+        if self._hub is None:
+            return False
+        targets = [s for s in self._hub.sessions.values() if s.paired and not s.closed]
+        if self.config.home_channel:
+            home = [s for s in targets if s.device_id == self.config.home_channel]
+            targets = home or targets
+        if not targets:
+            return False
+        for session in targets:
+            if session.has_speaker:
+                pcm = await self._cue_pcm(cue, session.speaker_rate)
+                if pcm:
+                    await session.play_pcm(pcm, session.speaker_rate)
+            # The card speaks the language the device's font can draw: Chinese once
+            # the firmware carries CJK glyphs, English on an ASCII-only build.
+            head, text = notify.card_text(spec, session.charset) if spec else (title, body)
+            if head:
+                await session.show_card(head, text, ttl_s=ttl_s)
+        return True
 
     async def play_tts(self, chat_id: str, audio_path: str, **kwargs) -> SendResult:
         return await self._play_file(chat_id, audio_path)

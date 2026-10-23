@@ -33,6 +33,7 @@ idf_component_register(
         "port_ota.cpp"
         "port_parallel.cpp"
         "port_rgb.cpp"
+        "port_serial.cpp"
         "port_power.cpp"
         "port_latch_power.cpp"
         "port_opus.cpp"

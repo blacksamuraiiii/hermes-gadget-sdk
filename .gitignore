@@ -32,3 +32,8 @@ firmware/esp32/sdkconfig.*-*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local runtime output: relay logs carry this machine's device id and paths,
+# .workbuddy is a local scratch/memory directory, not part of the project.
+tools/*.log
+.workbuddy/

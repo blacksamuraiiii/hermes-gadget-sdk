@@ -9,6 +9,8 @@
   A small device for your own <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>, with its tools, memory, and skills.
 </p>
 
+> 本 fork 的第一阶段改动与用法写在中文说明里：[README_zh.md](README_zh.md)（USB 直连、三类消息提醒、中文点阵字体、语音下线、v0.1 固件存档）。
+
 <p align="center">
   <a href="https://adolanium.github.io/hermes-gadget-sdk/installer.html"><b>Set up a board</b></a> ·
   <a href="docs/desktop.md"><b>Try the simulator</b></a> ·

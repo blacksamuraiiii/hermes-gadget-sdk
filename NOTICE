@@ -101,6 +101,11 @@ spotpear/sp-esp32-s3-1.28-box board,
 https://github.com/78/xiaozhi-esp32/tree/d91d6824309d12df5fc3db5edf8145ee829135d7/main/boards/spotpear/sp-esp32-s3-1.28-box,
 MIT License. Only these hardware facts are used.
 
+The Movecall Moji pin map and panel settings in firmware/esp32/main/board.cpp
+follow xiaozhi-esp32's movecall/moji-esp32s3 board,
+https://github.com/78/xiaozhi-esp32/tree/d91d6824309d12df5fc3db5edf8145ee829135d7/main/boards/movecall/moji-esp32s3,
+MIT License. Only these hardware facts are used.
+
 The BOX-3 panel initialization register values in
 firmware/esp32/main/panel_box3.hpp follow Espressif's ESP32-S3-BOX-3 BSP,
 https://github.com/espressif/esp-bsp/tree/master/bsp/esp-box-3,

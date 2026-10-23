@@ -95,25 +95,56 @@ void Canvas::bitmap1(int x, int y, int w, int h, const uint8_t* bits, uint16_t c
   }
 }
 
-int Canvas::text(int x, int y, std::string_view s, int scale, uint16_t color) {
-  if (scale < 1) scale = 1;
-  for (char ch : s) {
-    const char* g = font::glyph(ch);
-    for (int row = 0; row < font::kGlyphHeight; ++row) {
-      for (int col = 0; col < font::kGlyphWidth; ++col) {
-        if (g[row * font::kGlyphWidth + col] == '#') {
-          fill_rect(x + col * scale, y + row * scale, scale, scale, color);
-        }
+namespace {
+
+void draw_narrow(Canvas& c, int x, int y, int scale, uint16_t color, char ch) {
+  const char* g = font::glyph(ch);
+  for (int row = 0; row < font::kGlyphHeight; ++row) {
+    for (int col = 0; col < font::kGlyphWidth; ++col) {
+      if (g[row * font::kGlyphWidth + col] == '#') {
+        c.fill_rect(x + col * scale, y + row * scale, scale, scale, color);
       }
     }
-    x += font::kCellWidth * scale;
+  }
+}
+
+void draw_wide(Canvas& c, int x, int y, int scale, uint16_t color, const uint8_t* bm) {
+  for (int row = 0; row < font::kGlyphHeight; ++row) {
+    const unsigned bits = (static_cast<unsigned>(bm[2 * row]) << 8) | bm[2 * row + 1];
+    for (int col = 0; col < font::kWideCellWidth; ++col) {
+      if (bits & (1u << (11 - col))) {
+        c.fill_rect(x + col * scale, y + row * scale, scale, scale, color);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+int Canvas::text(int x, int y, std::string_view s, int scale, uint16_t color) {
+  if (scale < 1) scale = 1;
+  for (size_t i = 0; i < s.size();) {
+    const uint32_t cp = font::decode(s, i);
+    if (cp != 0 && cp < 0x80) {
+      draw_narrow(*this, x, y, scale, color, static_cast<char>(cp));
+      x += font::kCellWidth * scale;
+      continue;
+    }
+    const uint8_t* bm = cp ? font::wide_bitmap(cp) : nullptr;
+    if (bm) {
+      draw_wide(*this, x, y, scale, color, bm);
+    } else {
+      draw_narrow(*this, x + (font::kWideCellWidth - font::kGlyphWidth) * scale / 2, y, scale,
+                  color, '?');  // no glyph for it in this font
+    }
+    x += font::kWideCellWidth * scale;
   }
   return x;
 }
 
 int Canvas::text_width(std::string_view s, int scale) {
   if (s.empty()) return 0;
-  return static_cast<int>(s.size()) * font::kCellWidth * scale - scale;
+  return font::columns(s) * font::kCellWidth * scale - scale;
 }
 
 int Canvas::line_height(int scale) { return font::kCellHeight * scale; }
@@ -130,41 +161,79 @@ void Canvas::blit(int x, int y, int w, int h, const uint16_t* src) {
   }
 }
 
+namespace {
+
+// One codepoint of a paragraph, with the columns it occupies.
+struct Cell {
+  size_t off;
+  size_t len;
+  uint32_t cp;
+  int cols;
+};
+
+std::vector<Cell> cells_of(std::string_view s) {
+  std::vector<Cell> cells;
+  size_t i = 0;
+  while (i < s.size()) {
+    const size_t start = i;
+    const uint32_t cp = font::decode(s, i);
+    if (i == start) ++i;  // never loop on a byte the decoder refuses to consume
+    const int cols = (cp != 0 && cp < 0x80) ? 1 : 2;
+    cells.push_back({start, i - start, cp, cols});
+  }
+  return cells;
+}
+
+int width_of(const std::vector<Cell>& cells, size_t from, size_t to) {
+  int width = 0;
+  for (size_t k = from; k < to && k < cells.size(); ++k) {
+    if (cells[k].cp == 0) continue;  // a broken byte occupies a cell but no room
+    width += cells[k].cols;
+  }
+  return width;
+}
+
+}  // namespace
+
 std::vector<std::string> wrap_text(std::string_view text, int max_chars) {
   std::vector<std::string> lines;
   if (max_chars < 1) max_chars = 1;
   size_t i = 0;
   while (i <= text.size()) {
-    size_t nl = text.find('\n', i);
-    std::string_view para = text.substr(i, nl == std::string_view::npos ? std::string_view::npos : nl - i);
-    std::string line;
-    size_t p = 0;
-    while (p < para.size()) {
-      while (p < para.size() && para[p] == ' ') ++p;
-      size_t end = para.find(' ', p);
-      if (end == std::string_view::npos) end = para.size();
-      std::string_view word = para.substr(p, end - p);
-      p = end;
-      if (word.empty()) continue;
-      while (static_cast<int>(word.size()) > max_chars) {
-        if (!line.empty()) {
-          lines.push_back(line);
-          line.clear();
-        }
-        lines.emplace_back(word.substr(0, static_cast<size_t>(max_chars)));
-        word.remove_prefix(static_cast<size_t>(max_chars));
+    const size_t nl = text.find('\n', i);
+    const std::string_view para =
+        text.substr(i, nl == std::string_view::npos ? std::string_view::npos : nl - i);
+    const std::vector<Cell> cells = cells_of(para);
+    size_t start = 0;
+    int width = 0;
+    size_t space = std::string_view::npos;  // last break-friendly space in this line
+    for (size_t c = 0; c < cells.size(); ++c) {
+      const Cell& cell = cells[c];
+      const bool blank = cell.cp == ' ';
+      if (blank) {
+        if (width > 0) space = c;
+        continue;  // a space never starts a line
       }
-      if (word.empty()) continue;
-      size_t needed = line.empty() ? word.size() : line.size() + 1 + word.size();
-      if (static_cast<int>(needed) > max_chars) {
+      if (width + cell.cols > max_chars && width > 0) {
+        const bool at_space = space != std::string_view::npos && space > start;
+        const size_t cut = at_space ? space : c;
+        std::string line(para.substr(cells[start].off, cells[cut].off - cells[start].off));
+        while (!line.empty() && line.back() == ' ') line.pop_back();
         lines.push_back(line);
-        line.assign(word);
-      } else {
-        if (!line.empty()) line.push_back(' ');
-        line.append(word);
+        start = at_space ? space + 1 : cut;
+        while (start < cells.size() && cells[start].cp == ' ') ++start;
+        width = width_of(cells, start, c);
+        space = std::string_view::npos;
+        for (size_t k = start; k < c; ++k) {
+          if (cells[k].cp == ' ' && width_of(cells, start, k) > 0) space = k;
+        }
       }
+      width += cell.cols;
+      if (width > max_chars) width = cell.cols;  // a glyph wider than the line still shows
     }
-    lines.push_back(line);
+    std::string tail(start < cells.size() ? std::string(para.substr(cells[start].off)) : std::string());
+    while (!tail.empty() && tail.back() == ' ') tail.pop_back();
+    lines.push_back(tail);
     if (nl == std::string_view::npos) break;
     i = nl + 1;
   }
@@ -173,3 +242,19 @@ std::vector<std::string> wrap_text(std::string_view text, int max_chars) {
 }
 
 }  // namespace hg
+
+namespace hg::font {
+
+int columns(std::string_view s) {
+  int total = 0;
+  size_t i = 0;
+  while (i < s.size()) {
+    const size_t start = i;
+    const uint32_t cp = hg::font::decode(s, i);
+    if (i == start) ++i;
+    total += (cp != 0 && cp < 0x80) ? 1 : 2;
+  }
+  return total;
+}
+
+}  // namespace hg::font

@@ -41,7 +41,11 @@ bool enable_p4_vdd_io_rail() {
 
 hgp::EspSystem g_system;
 hgp::NvsStorage g_storage;
+#if CONFIG_HG_LINK_USB_SERIAL
+hgp::SerialLink g_transport;
+#else
 hgp::WsTransport g_transport;
+#endif
 hgp::SpiDisplay g_display;
 hgp::ParallelDisplay g_parallel;
 hgp::RgbDisplay g_rgb;
@@ -165,16 +169,31 @@ void dispatch(hg::App& app, hgp::Event& ev) {
   if (stale) return;
   switch (ev.type) {
     case EventType::NetUp:
+#if !CONFIG_HG_LINK_USB_SERIAL
       g_wifi.connected(app);
+#endif
       app.on_network(true, text ? text : "");
       break;
     case EventType::NetDown:
+#if CONFIG_HG_LINK_USB_SERIAL
+      // The Wi-Fi driver reports NetDown whenever it has no network (it has none
+      // on this build by design). The cable is the network; SerialLink reports
+      // its own loss through WsClosed.
+      break;
+#else
       app.on_network(false, text ? text : "");
       break;
+#endif
     case EventType::WifiDisconnected:
+#if CONFIG_HG_LINK_USB_SERIAL
+      // The Wi-Fi driver still runs (it hands out the device key) but it has no
+      // network to join, so its disconnect must not undo the USB link's NetUp.
+      break;
+#else
       g_wifi.disconnected();
       app.on_network(false, text ? text : "");
       break;
+#endif
     case EventType::WifiStarted: g_wifi.reconfigure(); break;
     case EventType::WifiScanDone: g_wifi.scan_done(); break;
     case EventType::WifiProvision:
@@ -265,6 +284,11 @@ extern "C" void app_main(void) {
 
   // Wi-Fi first: the radio is the entropy source for the device key.
   g_wifi.begin(g_storage);
+#if CONFIG_HG_LINK_USB_SERIAL
+  // The cable is the link, so the reader task must be up before the app asks to
+  // connect. Wi-Fi stays started: it still hands out the device key.
+  if (!g_transport.begin()) ESP_LOGE(TAG, "the USB link did not start; the device stays offline");
+#endif
 
   hg::Hal hal;
   hal.system = &g_system;

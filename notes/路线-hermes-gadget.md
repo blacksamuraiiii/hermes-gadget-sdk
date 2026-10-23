@@ -59,4 +59,45 @@ hermes-gadget sim --url ws://127.0.0.1:8765/gadget --board sim-466x466-round   #
 
 - [ ] SDK 当日版本与 porting.md 的实际要求
 - [ ] 模拟器在本机（WSL）跑通与否：WebSocket + 音频设备在 WSL 的可用性待验证
-- [ ] 本板 port 的起点选择
+- [x] 本板 port 的起点选择 → 见下节「port 工作量评估」
+
+## port 工作量评估（2026-10-23，读本地 fork 实测）
+
+**结论：属 porting.md 里「用现有驱动的板」最简单档，零驱动代码，改 4 处配置；唯一不确定项是 GC9A01 默认初始化表能否点亮本板屏。**
+
+| 要改 | 文件 | 改动量 |
+|---|---|---|
+| 板型选项 | `firmware/esp32/main/Kconfig.projbuild` | +4 行（仿 `HG_BOARD_SPOTPEAR_BOX128`） |
+| 板名映射 | `firmware/esp32/main/board.cpp:25-45` | +2 行（`#elif` + `#define HG_BOARD_NAME`） |
+| 板配置 `make()` | `firmware/esp32/main/board.cpp:688` 起（仿 spotpear 128 段） | +30 行 |
+| 构建配置 | `firmware/esp32/boards/movecall-moji-esp32s3/sdkconfig.defaults` | 新文件约 18 行（抄 spotpear 128，改板名宏） |
+| 安装器条目 | 同目录 `board.json` | 新文件 5 行 |
+
+**不用写的部分（已核实是共享实现）**
+
+- 显示：`SpiDisplay` 已支持 GC9A01（`port_display.cpp:211-236`），只需 `controller=Gc9a01, round=true, bgr=true, invert=true`
+- 音频：单 ES8311 双向 + 模拟麦 = 官方 shared 路径（`port_codec.cpp:106-107,162`），设 `mic=Es8311` 即走 `es8311 analog` 分支
+- 采样率：`DeviceProfile` 声明，服务端重采样到 speaker rate，24 kHz 不用改主机
+- 无电池、无触摸：不启用 `latch_power`、`touch.enabled=false`，`Power` 各测量报 null
+- 模拟器：`runner.py:52` 已有 `sim-240x240-round`，同尺寸圆屏，UI 先在桌面调
+
+**本板 make() 目标值（照 xiaozhi config.h 填）**
+
+```
+lcd:   Gc9a01, 240x240, round=true, mirror_x=true, mirror_y=false, swap_xy=false,
+       invert=true, bgr=true, mosi=17, sclk=16, cs=15, dc=7, rst=18,
+       backlight=3, backlight_invert=false, 40 MHz
+codec: mclk=6, bclk=14, ws=12, dout=11, din=13, pa=9, mic=Es8311, speaker=Es8311
+i2c:   sda=5, scl=4, 400 kHz
+buttons: talk=0（BOOT，active low）
+touch.enabled=false；latch_power 不启用
+```
+
+**三个风险**
+
+1. GC9A01 默认表不亮或花屏 → 加 17 行面板表（照 `panel_spotpear128.hpp`）+ `port_display.cpp` 一个分支；必须真机看，不能纸上定
+2. 只有一个键 → 只能映射 `Talk`；`Cancel` 要在 port 里自己写长按（porting.md「A single button」条）
+3. `sdkconfig.defaults` 必须含 `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`：本板只有内置 USB-JTAG，用默认 UART 控制台会收不到命令
+
+**验证顺序**：sim 跑通链路 → `idf.py build` → Windows 侧烧录 → `scripts/com5_probe.ps1` 抓板级日志 → 按键说话链路 → 按 `docs/hardware-validation.md` 记实物结果
+

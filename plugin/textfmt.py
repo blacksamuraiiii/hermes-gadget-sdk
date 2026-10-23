@@ -73,9 +73,29 @@ def fold_ascii(text: str) -> str:
     return "".join(out)
 
 
+def _drawable(ch: str) -> bool:
+    """True when the device's font can draw this character.
+
+    The firmware carries ASCII plus the GB2312 level-1 hanzi (its CJK table is
+    generated from that range by tools/make_cjk_font.py), so anything GB2312
+    cannot encode - emoji, box drawing, rare hanzi - would come out as '?'.
+    """
+    if ch == "\n" or " " <= ch <= "~":
+        return True
+    try:
+        ch.encode("gb2312")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def for_device(text: str, charset: str = "ascii") -> str:
     text = strip_markdown(text or "")
     if charset == "ascii":
         text = fold_ascii(text)
+    elif charset.replace("-", "").lower() in ("utf8", "utf_8"):
+        # Keep the CJK; drop what the font cannot draw instead of showing '?'.
+        text = "".join(_PUNCT.get(ch, ch) if ch in _PUNCT else ch for ch in text)
+        text = "".join(ch for ch in text if _drawable(ch))
     text = "\n".join(_SPACES.sub(" ", line).rstrip() for line in text.splitlines())
     return _BLANKS.sub("\n\n", text).strip()

@@ -26,6 +26,8 @@ namespace {
 #define HG_BOARD_NAME "spotpear-esp32-s3-1.54-muma"
 #elif CONFIG_HG_BOARD_SPOTPEAR_BOX128
 #define HG_BOARD_NAME "spotpear-esp32-s3-1.28-box"
+#elif CONFIG_HG_BOARD_MOVECALL_MOJI
+#define HG_BOARD_NAME "movecall-moji-esp32s3"
 #elif CONFIG_HG_BOARD_BOX3
 #define HG_BOARD_NAME "esp32-s3-box-3"
 #elif CONFIG_HG_BOARD_CORES3
@@ -715,6 +717,48 @@ BoardConfig make() {
   b.buttons = {0, -1, -1, -1};
   b.talk_label = "BOOT";
   b.cancel_label = "Swipe down";
+  return b;
+}
+
+#elif CONFIG_HG_BOARD_MOVECALL_MOJI
+// Movecall Moji: ESP32-S3-WROOM-1-N16R8, 16 MB flash, 1.28" round 240x240
+// GC9A01 over SPI, one ES8311 for both directions with an analog microphone on
+// its own ADC, NS4150B amplifier, BOOT key, white status LED. No battery, no
+// touch, no IMU. Pins: xiaozhi-esp32 board movecall/moji-esp32s3; the panel
+// mirror/invert/BGR set follows that board's bring-up, which is what lights it.
+BoardConfig make() {
+  BoardConfig b{};
+  b.name = kBoardName;
+  b.lcd.enabled = true;
+  b.lcd.controller = LcdController::Gc9a01;
+  b.lcd.width = 240;
+  b.lcd.height = 240;
+  b.lcd.round = true;
+  b.lcd.swap_xy = false;
+  b.lcd.mirror_x = true;
+  b.lcd.mirror_y = false;
+  b.lcd.invert = true;
+  b.lcd.bgr = true;
+  b.lcd.mosi = 17;
+  b.lcd.sclk = 16;
+  b.lcd.cs = 15;
+  b.lcd.dc = 7;
+  b.lcd.rst = 18;
+  b.lcd.backlight = 3;
+  b.lcd.backlight_invert = false;  // PWM on GPIO3, high = bright
+  b.lcd.spi_mhz = 40;
+  b.i2c = {5, 4, 400000};
+  b.codec.enabled = true;
+  b.codec.mclk = 6;
+  b.codec.bclk = 14;
+  b.codec.ws = 12;
+  b.codec.dout = 11;
+  b.codec.din = 13;
+  b.codec.pa = 9;
+  b.codec.mic = MicCodec::Es8311;  // AP2718AT analog mic on the ES8311 ADC
+  b.buttons = {0, -1, -1, -1};  // BOOT only: talk, no cancel or scroll
+  b.status_led = 21;
+  b.talk_label = "BOOT";
   return b;
 }
 #elif CONFIG_HG_BOARD_CROWPANEL_21
