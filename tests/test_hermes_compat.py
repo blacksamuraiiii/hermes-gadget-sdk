@@ -86,3 +86,46 @@ def test_the_adapter_only_uses_listed_private_hooks():
 @requires_hermes
 def test_the_checked_out_hermes_is_compatible():
     assert compat.missing() == []
+
+# Packages the plugin may import at module level that are not Hermes (none today; they are imported
+# lazily where they are optional).
+_NOT_HERMES = frozenset({"websockets", "PIL"})
+
+
+def _module_level_hermes_imports():
+    """Each top-level `from X import Y` / `import X` in plugin/*.py that names neither the standard
+    library, the plugin itself nor a known third-party package: those come from Hermes."""
+    import ast
+
+    found = []
+    for path in sorted((REPO / "plugin").glob("*.py")):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                modules = [(node.module, tuple(alias.name for alias in node.names))]
+            elif isinstance(node, ast.Import):
+                modules = [(alias.name, ()) for alias in node.names]
+            else:
+                continue
+            for module, names in modules:
+                top = module.split(".")[0]
+                if top in sys.stdlib_module_names or top in _NOT_HERMES or top == "__future__":
+                    continue
+                found.append((path.name, module, names))
+    return found
+
+
+def test_every_module_level_hermes_import_is_listed_in_compat_imports():
+    # compat.check() runs before the adapter imports: a Hermes name it doesn't list would fail
+    # later as a bare ImportError instead of the plugin's compatibility message.
+    found = _module_level_hermes_imports()
+    assert found, "no module-level Hermes imports found: the scan is broken"
+    gaps = []
+    for file, module, names in found:
+        listed = compat.IMPORTS.get(module)
+        if listed is None:
+            gaps.append(f"{file}: {module} is not in compat.IMPORTS")
+            continue
+        missing = sorted(set(names) - set(listed))
+        if missing:
+            gaps.append(f"{file}: {module} {missing} not in compat.IMPORTS")
+    assert not gaps, "\n".join(gaps)
