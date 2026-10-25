@@ -2,10 +2,13 @@
 
 ## Unreleased
 
+### Hermes plugin
+
+- `hermes gadget update <device> --latest` no longer installs an older release over a device that runs newer firmware. It compares the leading `MAJOR.MINOR.PATCH` numbers, so 0.10.0 is newer than 0.9.0 and a source build such as `0.4.0-12-gabc1234` counts as at least 0.4.0. A device on the release's version or a newer one gets a one-line message and nothing installed; a device whose version is missing or unreadable is refused with a message. `--force` installs the release in every case. Reported by @mforce.
+
 ### Firmware
 
 - Audio written right after a speaker stream starts is no longer thrown away on boards whose speaker task empties its queue after an abort: I2S speakers, and codec speakers without `codec.speaker_pa`. `begin()` aborts the stream before it, and the task emptied the queue on its next pass, so audio queued in between, such as a short tone written at once, could go with it. When `begin()` replaces a stream it now waits for that reset, at most 6 ticks (about 60 ms), as the P4 speaker also waits in `begin()`, so `write()` stays non-blocking, and an idle speaker starts at once. The task drops what it received while a reset was pending, and a codec cuts a stream's silent tail short when the next stream waits. A codec stream that closes with nothing played also no longer leaves `busy()` true until the next stream, which kept the screen from sleeping.
-
 
 ### Hardware and setup
 
