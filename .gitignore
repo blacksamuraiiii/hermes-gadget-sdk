@@ -37,3 +37,7 @@ Thumbs.db
 # .workbuddy is a local scratch/memory directory, not part of the project.
 tools/*.log
 .workbuddy/
+
+# Release images live in GitHub Releases, not in git: a 1.4 MB image per version
+# in history is what this rule exists to stop. Keep README.md and SHA256SUMS here.
+firmware/releases/*/*.bin
