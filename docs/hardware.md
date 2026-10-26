@@ -62,7 +62,11 @@ A prebuilt `movecall-moji-esp32s3` image flashes with any ESP32-S3 flasher; the 
 ### First flash: what to check
 
 - The boot log must show `gc9a01 240x240 ready`, then `codecs: speaker ready, microphones ready (es8311 analog)`, and `parts: display gc9a01, microphone es8311, speaker es8311`. The board name never appears in the log: the image carries it as the `HGBOARD=` tag, which only the updater uses to refuse another board's firmware. A wrong image still boots — it just drives the wrong pins.
-- The screen stays black but the log is clean: the panel may need its own `Gc9a01Panel` table, or the backlight polarity is inverted on this glass revision. If the log instead says `no PSRAM framebuffer` or `PSRAM configured but none initialised`, PSRAM did not come up: the panel is running from internal RAM and audio will stutter — that is a PSRAM/hardware problem, not a panel problem.
+- The screen stays black but the log is clean: the panel may need its own `Gc9a01Panel` table, or the backlight polarity is inverted on this glass revision. Read the boot log for these three lines before blaming the panel, because each names a different cause:
+  - `PSRAM configured but none initialised` (error): this build has PSRAM enabled and the module did not bring it up — a hardware or module problem.
+  - `built without PSRAM (CONFIG_SPIRAM=n)` and `PSRAM not compiled in (CONFIG_SPIRAM=n)`: the image itself was built without PSRAM, so the panel runs from internal RAM by design. Wrong image for a module that has PSRAM, expected on one that has none.
+  - `no PSRAM framebuffer` (warning): PSRAM is configured but the framebuffer did not fit — it is full or partly broken.
+  In all three the panel runs from internal RAM and audio will stutter; none of them is a panel or backlight fault.
 - Hold BOOT and speak: a recording that never shows speech means the analog mic path or the ES8311 solder joint is at fault (the vendor's own FAQ names the same two joints).
 - The console is USB Serial/JTAG only. If commands typed in a terminal never arrive, `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` is missing from the board's defaults.
 

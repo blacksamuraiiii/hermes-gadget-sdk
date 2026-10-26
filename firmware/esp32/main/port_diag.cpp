@@ -187,6 +187,13 @@ void log_boot_summary() {
     ESP_LOGE(TAG, "PSRAM configured but none initialised: the panel runs from internal RAM and "
                   "audio may stutter (hardware/PSRAM problem, not a panel problem)");
   }
+#else
+  // Not configured at all, so the panel is on internal RAM by design. On a board that has PSRAM
+  // this is a wrong build, not a hardware fault; on one that has none it is expected. Either way
+  // the consequence is the same and has to be in the log, or a black screen gets blamed on the
+  // panel.
+  ESP_LOGW(TAG, "PSRAM not compiled in (CONFIG_SPIRAM=n): the panel runs from internal RAM and "
+                "audio may stutter");
 #endif
   ESP_LOGI(TAG, "parts: display %s, microphone %s, speaker %s, touch %s, key %s", g_parts.display, g_parts.mic,
            g_parts.speaker, g_parts.touch ? "yes" : "no", g_parts.key ? "yes" : "no");
