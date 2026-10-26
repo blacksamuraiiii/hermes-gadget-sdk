@@ -231,7 +231,9 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
     def _relay_hook_cmd(self, which: str) -> str:
         return self._relay_start_cmd if which == "start" else self._relay_stop_cmd
 
-    async def run_relay_hook(self, which: str, *, quiet: bool = False) -> str:
+    async def run_relay_hook(self, which: str, *, quiet: bool = False) -> tuple[str, int]:
+        """Run the configured relay command. The exit code is the contract: 0 means the
+        relay is up (started now or already running). Output is only for the log."""
         """Run the configured relay start/stop command; return what it printed."""
         cmd = self._relay_hook_cmd(which)
         if not cmd:
@@ -245,19 +247,21 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         text = (out or b"").decode("utf-8", "replace").strip()
         first = text.splitlines()[0] if text else f"exit {proc.returncode}"
         if not quiet:
-            logger.info("[%s] relay %s: %s", self.name, which, first)
-        return text
+            logger.info("[%s] relay %s (exit %s): %s", self.name, which, proc.returncode, first)
+        return text, proc.returncode
 
     async def start_relay_if_configured(self, *, quiet: bool = False) -> bool:
         """Bring the USB relay up with the gateway (Windows host; see extras relay_start)."""
         if not self._relay_start_cmd:
             return False
         try:
-            out = await self.run_relay_hook("start", quiet=quiet)
+            text, code = await self.run_relay_hook("start", quiet=quiet)
         except Exception as exc:  # a missing relay must not take the platform down
             logger.warning("[%s] could not start the relay: %s", self.name, exc)
             return False
-        return "relay started" in out or "already running" in out
+        if code != 0:
+            logger.warning("[%s] relay start failed (exit %s): %s", self.name, code, text)
+        return code == 0
 
     async def stop_relay_if_configured(self) -> None:
         """Stop the relay on shutdown: it exists only for this gateway (see extras relay_stop)."""
