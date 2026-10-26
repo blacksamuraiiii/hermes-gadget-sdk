@@ -10,6 +10,7 @@ present.
 from __future__ import annotations
 
 import io
+import math
 import shutil
 import subprocess
 import sys
@@ -129,3 +130,45 @@ def decode_file(path: str, rate: int) -> bytes:
 
 def duration_s(pcm: bytes, rate: int) -> float:
     return len(pcm) / 2 / rate if rate else 0.0
+
+
+# A press shorter than this is a key tap or a playback tail, not someone speaking, and a capture
+# quieter than MIN_UTTERANCE_RMS holds no speech: a microphone's own noise floor sits well below
+# it, while a word at arm's length is several hundred. Either one used to start a turn whose
+# transcript came back empty, which hung the device on "thinking" for half an hour, so both are
+# dropped before Hermes ever sees them.
+MIN_UTTERANCE_S = 0.5
+MIN_UTTERANCE_RMS = 80
+
+
+def pcm_rms(pcm: bytes) -> float | None:
+    """RMS of mono/interleaved PCM16 samples; None when there are none."""
+    samples = _samples(pcm)
+    if not samples:
+        return None
+    return math.sqrt(sum(float(s) * s for s in samples) / len(samples))
+
+
+def wav_rms(data: bytes) -> float | None:
+    """RMS of a PCM16 WAV's samples (any rate, any channel count); None when it is not one.
+
+    None means "cannot tell": the caller must not mistake an unreadable capture for silence
+    and drop someone's speech with it.
+    """
+    try:
+        with wave.open(io.BytesIO(data), "rb") as w:
+            if w.getsampwidth() != 2 or w.getcomptype() != "NONE":
+                return None
+            return pcm_rms(w.readframes(w.getnframes()))
+    except (wave.Error, EOFError):
+        return None
+
+
+def utterance_rejection(wav: bytes, seconds: float) -> str | None:
+    """Why this utterance must not start a turn, or None when it should."""
+    if seconds < MIN_UTTERANCE_S:
+        return f"{seconds:.2f}s is under {MIN_UTTERANCE_S:.1f}s"
+    level = wav_rms(wav)
+    if level is not None and level < MIN_UTTERANCE_RMS:
+        return f"RMS {level:.0f} is under {MIN_UTTERANCE_RMS}"
+    return None

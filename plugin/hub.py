@@ -829,6 +829,17 @@ class DeviceHub:
         if seconds < MIN_UTTERANCE_S:
             await session.send_notice("Didn't catch that - hold the button while speaking")
             return
+        # A capture this quiet holds no speech: the microphone's noise floor is far below
+        # MIN_UTTERANCE_RMS and a word at arm's length is several hundred. Sent on, it would
+        # come back as an empty transcript and start a turn that hangs; dropped here, the device
+        # gets a notice instead. Unreadable audio is not judged (None) — never lose speech to a
+        # parse failure.
+        level = audio.pcm_rms(bytes(up.pcm))
+        if level is not None and level < audio.MIN_UTTERANCE_RMS:
+            log.debug("[%s] %.2fs capture at RMS %.0f dropped: quieter than %d, so it holds no speech",
+                      session.device_id, seconds, level, audio.MIN_UTTERANCE_RMS)
+            await session.send_notice("Didn't catch that - hold the button while speaking")
+            return
         wav = audio.wav_bytes(bytes(up.pcm), up.rate)
         session.spawn(self.delegate.on_utterance(session, up.id, wav, seconds))
 

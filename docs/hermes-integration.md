@@ -117,6 +117,10 @@ To use `deliver="gadget"`, configure the gadget home channel. By default, `auto_
 
 Because a gadget is voice-first, `GadgetAdapter` answers `True` from `_should_auto_tts_for_chat` for devices that declare a speaker. The gateway then reads every reply aloud for that chat, both typed and spoken input. `/voice off` in the device's chat, or `speak_replies: false`, turns it off.
 
+**What a capture must be to reach the gateway.** A turn whose transcript comes back empty still runs, and used to leave the device on "thinking" for half an hour. So the hub drops a capture before it becomes an utterance when either holds: it lasted under `MIN_UTTERANCE_S` (0.5 s — a key tap or a playback tail), or its RMS is under `MIN_UTTERANCE_RMS` (80 — a room's own noise floor, where a word at arm's length reads several hundred). Both answer the device with "Didn't catch that - hold the button while speaking" instead of starting a turn. Audio the reader cannot parse is never treated as silence: a failed parse must not throw away someone's speech. The adapter keeps the same rules as a second net (`audio.utterance_rejection`) for any caller that hands it a WAV directly.
+
+**`voice: false` is a mode, not a fix.** With `voice: false` in the plugin's `extra`, the adapter answers every capture with `Voice is off. This screen only shows reminders.` and ends the turn, so the device leaves its thinking screen; it starts no turn, transcribes nothing and speaks nothing. The reminder path — cards, cues, timer alarms, approvals that need a host — still works. It exists for a board run as a reminder screen, and it does not mean the voice path is repaired: the gate above is what keeps an empty transcript from hanging a device.
+
 ### Pairing
 
 The SDK reuses Hermes's DM pairing instead of inventing its own:

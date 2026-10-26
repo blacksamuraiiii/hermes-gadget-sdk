@@ -178,3 +178,33 @@ def test_battery_log_rolls_over_a_full_file(tmp_path):
     assert (tmp_path / "hg-1.1.csv").exists()
     assert (tmp_path / "hg-1.csv").stat().st_size < 400
     assert (tmp_path / "hg-1.csv").read_text().startswith("time,unix_s,battery_mv")
+
+
+# -- what may start a turn ----------------------------------------------------------------
+
+def _pcm(seconds: float, amplitude: int, rate: int = 16000) -> bytes:
+    return struct.pack("<h", amplitude) * int(rate * seconds)
+
+
+def test_a_short_press_never_starts_a_turn():
+    assert audio.utterance_rejection(audio.wav_bytes(_pcm(0.2, 3000), 16000), 0.2) is not None
+
+
+def test_a_long_but_silent_capture_never_starts_a_turn():
+    quiet = _pcm(3.0, 5)  # a room's own noise floor, three seconds of it
+    level = audio.pcm_rms(quiet)
+    assert level is not None and level < audio.MIN_UTTERANCE_RMS
+    assert audio.utterance_rejection(audio.wav_bytes(quiet, 16000), 3.0) is not None
+
+
+def test_speech_held_for_a_moment_is_sent():
+    spoken = _pcm(2.0, 800)
+    assert audio.pcm_rms(spoken) == 800
+    assert audio.utterance_rejection(audio.wav_bytes(spoken, 16000), 2.0) is None
+
+
+def test_audio_it_cannot_read_is_never_dropped_as_silence():
+    # A parse failure must not swallow someone's speech: unknown loudness is not silence.
+    assert audio.pcm_rms(b"") is None
+    assert audio.wav_rms(b"not a wav") is None
+    assert audio.utterance_rejection(b"not a wav", 2.0) is None
