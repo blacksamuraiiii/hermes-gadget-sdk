@@ -86,7 +86,16 @@ bool SpiDisplay::begin(const LcdConfig& cfg, i2c_master_bus_handle_t i2c_bus) {
   }
   const size_t px = static_cast<size_t>(cfg.width) * cfg.height;
   fb_ = static_cast<uint16_t*>(heap_caps_malloc(px * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!fb_) fb_ = static_cast<uint16_t*>(heap_caps_malloc(px * 2, MALLOC_CAP_8BIT));
+  if (!fb_) {
+    fb_ = static_cast<uint16_t*>(heap_caps_malloc(px * 2, MALLOC_CAP_8BIT));
+    if (fb_) {
+      // PSRAM is configured on this board but did not come up (or is full), so the panel now
+      // runs from internal RAM. Say so: the only other symptom is stuttering audio, because
+      // this block competes with the Wi-Fi and codec buffers.
+      ESP_LOGW(TAG, "no PSRAM framebuffer; %u KB of internal RAM is now the panel's",
+               static_cast<unsigned>(px * 2 / 1024));
+    }
+  }
   bounce_ = static_cast<uint16_t*>(heap_caps_malloc(static_cast<size_t>(cfg.width) * kBounceRows * 2, MALLOC_CAP_DMA));
   if (!fb_ || !bounce_) {
     ESP_LOGE(TAG, "not enough memory for a %ux%u framebuffer", cfg.width, cfg.height);

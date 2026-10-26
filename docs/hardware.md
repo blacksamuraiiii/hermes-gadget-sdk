@@ -62,7 +62,7 @@ A prebuilt `movecall-moji-esp32s3` image flashes with any ESP32-S3 flasher; the 
 ### First flash: what to check
 
 - The boot log must show `gc9a01 240x240 ready`, then `codecs: speaker ready, microphones ready (es8311 analog)`, and `parts: display gc9a01, microphone es8311, speaker es8311`. The board name never appears in the log: the image carries it as the `HGBOARD=` tag, which only the updater uses to refuse another board's firmware. A wrong image still boots — it just drives the wrong pins.
-- The screen stays black but the log is clean: the panel may need its own `Gc9a01Panel` table, or the backlight polarity is inverted on this glass revision.
+- The screen stays black but the log is clean: the panel may need its own `Gc9a01Panel` table, or the backlight polarity is inverted on this glass revision. If the log instead says `no PSRAM framebuffer` or `PSRAM configured but none initialised`, PSRAM did not come up: the panel is running from internal RAM and audio will stutter — that is a PSRAM/hardware problem, not a panel problem.
 - Hold BOOT and speak: a recording that never shows speech means the analog mic path or the ES8311 solder joint is at fault (the vendor's own FAQ names the same two joints).
 - The console is USB Serial/JTAG only. If commands typed in a terminal never arrive, `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` is missing from the board's defaults.
 

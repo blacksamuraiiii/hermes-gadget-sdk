@@ -179,6 +179,15 @@ void log_boot_summary() {
            kb(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)), kb(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
            kb(heap_caps_get_free_size(MALLOC_CAP_DMA)), kb(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
            kb(heap_caps_get_total_size(MALLOC_CAP_SPIRAM)));
+#if CONFIG_SPIRAM
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0) {
+    // CONFIG_SPIRAM_IGNORE_NOTFOUND lets the board boot without PSRAM. Then the framebuffer comes
+    // from internal RAM and audio stutters; without this line the log looks clean and the fault
+    // gets blamed on the panel.
+    ESP_LOGE(TAG, "PSRAM configured but none initialised: the panel runs from internal RAM and "
+                  "audio may stutter (hardware/PSRAM problem, not a panel problem)");
+  }
+#endif
   ESP_LOGI(TAG, "parts: display %s, microphone %s, speaker %s, touch %s, key %s", g_parts.display, g_parts.mic,
            g_parts.speaker, g_parts.touch ? "yes" : "no", g_parts.key ? "yes" : "no");
 }
