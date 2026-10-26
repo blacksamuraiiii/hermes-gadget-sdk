@@ -21,6 +21,11 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_HG_BOARD_MOVECALL_MOJI=y
 
+# The point of this board is the Chinese reminder screen, so it carries the 12 px
+# CJK table (6x12 ASCII + 12x12 CJK) and reports charset=utf-8. Other boards keep
+# the upstream 5x7 Latin-1 font: 26x5 cells here against 10 rows of 5x7 there.
+CONFIG_HG_FONT_CJK=y
+
 # The link is the USB cable, not Wi-Fi: messages become SLIP frames on the
 # console port and tools/usb_relay.py bridges them to the plugin. Comment this
 # line out to return to the WebSocket-over-Wi-Fi transport (no code changes).

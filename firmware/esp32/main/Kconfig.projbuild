@@ -17,6 +17,17 @@ menu "Hermes Gadget"
             The path the relay asks the plugin for. The host and port come from
             the relay's --target.
 
+    config HG_FONT_CJK
+        bool "Carry the 12 px CJK font instead of the 5x7 Latin-1 one"
+        default n
+        help
+            Link the 12 px table (6x12 ASCII plus 12x12 CJK, GB2312 level 1) and
+            report charset=utf-8, so Chinese text reaches the screen: 26 columns
+            by 5 rows on a 240 px round panel. Off: the upstream 5x7 table with
+            Latin-1 and charset=latin1, which every other board uses. A build
+            carries exactly one of the two; the 5x7 table costs about 1 KB in
+            flash, the CJK one about 110 KB.
+
     menu "Defaults (overridable from the serial console)"
         config HG_DEFAULT_NAME
             string "Device name"

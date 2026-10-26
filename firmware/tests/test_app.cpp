@@ -7,6 +7,7 @@
 #include "check.hpp"
 #include "hg/app.hpp"
 #include "hg/crypto.hpp"
+#include "hg/font.hpp"
 #include "hg/protocol.hpp"
 #include "hg/qr.hpp"
 #include "hg/setup.hpp"
@@ -1043,18 +1044,30 @@ TEST("app: long replies page themselves; UP/DOWN pauses the paging") {
   Rig r;
   r.bring_online(true);
   std::string text;
-  for (int i = 0; i < 40; ++i) text += "sentence " + std::to_string(i) + " of a long answer. ";
+  // A page holds 5 rows in the 12 px font and about twice that in the 5x7 one, so the
+  // reply has to be long enough to page under either.
+  const int sentences = hg::font::kMetrics.glyph_h >= 12 ? 40 : 90;
+  for (int i = 0; i < sentences; ++i) text += "sentence " + std::to_string(i) + " of a long answer. ";
   r.server(R"({"type":"turn.start","turn":"t"})");
   r.server(R"({"type":"reply","turn":"t","text":")" + text + "\"}");
   r.server(R"({"type":"turn.end","turn":"t","outcome":"success"})");
   CHECK_EQ(r.app.model().scroll, 0);
   r.advance(2500);
   CHECK_EQ(r.app.model().scroll, 0);  // the first page gets its reading time
-  r.advance(4100);
+  // Dwell time follows how much text a page holds, so wait for the turn of the page
+  // instead of assuming one font's timing.
   int page2 = r.app.model().scroll;
+  for (int i = 0; i < 10 && page2 == 0; ++i) {
+    r.advance(2000);
+    page2 = r.app.model().scroll;
+  }
   CHECK(page2 > 0);
-  r.advance(8100);
-  CHECK(r.app.model().scroll > page2);
+  int page3 = page2;
+  for (int i = 0; i < 10 && page3 == page2; ++i) {
+    r.advance(2000);
+    page3 = r.app.model().scroll;
+  }
+  CHECK(page3 > page2);
 
   r.server(R"({"type":"ping","ts":1})");  // keep the heartbeat alive through the long waits
   int before = r.app.model().scroll;
@@ -1393,10 +1406,13 @@ TEST("settings: round target is drawn only while the hold works") {
 TEST("settings: rectangular boards keep the full-width title strip and their header") {
   Rig r(Rig::touch_profile());  // 320x240: scale 2, so the strip is 22 px tall
   r.bring_online(true);
+  // The title strip is one line tall plus its padding (bar_h); don't hard-code a
+  // font's value, the 5x7 build has a shorter strip.
+  const int strip = hg::Canvas::line_height(2) + 2 * 2;
   CHECK(r.app.settings_title_hit(0, 0));
-  CHECK(r.app.settings_title_hit(319, 31));
-  CHECK(!r.app.settings_title_hit(319, 32));
-  CHECK(!r.app.settings_title_hit(160, 32));
+  CHECK(r.app.settings_title_hit(319, strip - 1));
+  CHECK(!r.app.settings_title_hit(319, strip));
+  CHECK(!r.app.settings_title_hit(160, strip));
   FakeHal display;
   hg::Ui ui(display);
   hg::UiModel m;
@@ -2429,8 +2445,14 @@ TEST("Wi-Fi setup: a code that does not fit beside the instructions leaves the t
   // a scannable code needs, so the screen is the text one, pixel for pixel.
   CHECK(setup_screen(128, 128, false, &code) == setup_screen(128, 128, false, nullptr));
   CHECK(setup_screen(320, 240, false, &code) == setup_screen(320, 240, false, nullptr));
+#if HG_FONT_CJK
   CHECK(setup_screen(240, 240, false, &code) == setup_screen(240, 240, false, nullptr));
   CHECK(setup_screen(466, 466, true, &code) == setup_screen(466, 466, true, nullptr));
+#else
+  // With 5x7 text the instructions are small enough that these two panels show the code.
+  CHECK(setup_screen(240, 240, false, &code) != setup_screen(240, 240, false, nullptr));
+  CHECK(setup_screen(466, 466, true, &code) != setup_screen(466, 466, true, nullptr));
+#endif
 }
 
 TEST("Wi-Fi setup: opening from USB releases an active talk button") {

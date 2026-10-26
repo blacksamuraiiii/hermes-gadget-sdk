@@ -246,7 +246,7 @@ int columns(std::string_view s) {
     const size_t start = i;
     const uint32_t cp = hg::font::decode(s, i);
     if (i == start) ++i;
-    total += (cp != 0 && cp < 0x80) ? 1 : 2;
+    total += (cp != 0 && (cp < 0x80 || !hg::font::kMetrics.wide)) ? 1 : 2;
   }
   return total;
 }
