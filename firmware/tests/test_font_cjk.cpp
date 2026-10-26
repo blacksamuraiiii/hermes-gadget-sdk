@@ -34,9 +34,17 @@ TEST("font: decoding skips UTF-8 sequences and survives broken bytes") {
 }
 
 TEST("font: the table carries GB2312 hanzi and questions the rest") {
-  CHECK(font::wide_bitmap(0x4E2D) != nullptr);  // 中
-  CHECK(font::wide_bitmap(0x597D) != nullptr);  // 好
-  CHECK(font::wide_bitmap(0x1F600) == nullptr); // an emoji: no glyph
+  int w = 0, h = 0, row_bytes = 0;
+  const uint8_t* rows = nullptr;
+  CHECK(font::bitmap(0x4E2D, &w, &h, &row_bytes, &rows));  // 中
+  CHECK_EQ(w, 12);
+  CHECK_EQ(h, 12);
+  CHECK_EQ(row_bytes, 2);
+  CHECK(font::bitmap(0x597D, &w, &h, &row_bytes, &rows));  // 好
+  CHECK(!font::bitmap(0x1F600, &w, &h, &row_bytes, &rows)); // an emoji: no glyph
+  CHECK(font::bitmap('A', &w, &h, &row_bytes, &rows));
+  CHECK_EQ(w, 6);
+  CHECK_EQ(row_bytes, 1);
 }
 
 TEST("canvas: a CJK glyph draws inside its 12x12 cell") {

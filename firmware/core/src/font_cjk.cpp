@@ -4085,6 +4085,28 @@ const uint8_t kBits[kCjkCount * kCjkBytes] = {
 
 }  // namespace
 
+// The narrow ASCII table lives in font_ascii.cpp; this file adds the wide one.
+const uint8_t* ascii_rows(uint32_t cp);
+const uint8_t* wide_bitmap(uint32_t cp);  // defined below
+
+bool bitmap(uint32_t cp, int* w, int* h, int* row_bytes, const uint8_t** rows) {
+  if (const uint8_t* narrow = ascii_rows(cp)) {
+    *w = kMetrics.glyph_w;
+    *h = kMetrics.glyph_h;
+    *row_bytes = 1;
+    *rows = narrow;
+    return true;
+  }
+  if (const uint8_t* wide = wide_bitmap(cp)) {
+    *w = kMetrics.wide_w;
+    *h = kMetrics.glyph_h;
+    *row_bytes = 2;
+    *rows = wide;
+    return true;
+  }
+  return false;
+}
+
 const uint8_t* wide_bitmap(uint32_t cp) {
   int lo = 0, hi = kCjkCount - 1;
   while (lo <= hi) {

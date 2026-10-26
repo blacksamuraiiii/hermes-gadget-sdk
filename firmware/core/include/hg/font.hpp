@@ -4,24 +4,40 @@
 #include <cstdint>
 #include <string_view>
 
+// One interface for whatever font a build carries: either the upstream 5x7 table
+// with Latin-1, or the 12 px table with CJK glyphs that a board reporting
+// `charset=utf-8` needs (see HG_FONT_CJK). Both answer the same questions — metrics,
+// the bitmap for a code point, and how many columns a string takes. Every count in
+// the UI stays in ASCII cells ("columns"), so a glyph twice as wide costs two.
 namespace hg::font {
 
-// The screen draws 12-pixel-tall cells. ASCII advances 6 pixels, which is the
-// layout's unit: one "column". A CJK glyph is 12x12 and takes two columns, so
-// every count in the UI stays in ASCII cells and a wide glyph simply costs 2.
-constexpr int kGlyphWidth = 6;
-constexpr int kGlyphHeight = 12;
-constexpr int kCellWidth = 6;       // one column
-constexpr int kWideCellWidth = 12;  // two columns
-constexpr int kCellHeight = 14;     // glyph plus two pixels of spacing
+struct Metrics {
+  int glyph_w;  // ink width of a narrow glyph (never wider than cell_w)
+  int glyph_h;  // ink height
+  int cell_w;   // one column
+  int cell_h;   // row pitch: ink plus spacing
+  int wide_w;   // two columns when the font has wide glyphs, else cell_w
+  bool wide;    // non-ASCII glyphs are drawable
+};
 
-// Row-major glyph pixels: kGlyphWidth * kGlyphHeight chars, '#' = on.
-// Non-printable / non-ASCII bytes map to '?'.
-const char* glyph(char c);
+#if HG_FONT_CJK
+// 6x12 ASCII plus 12x12 CJK: 26 columns by 5 rows on a 240-px round panel.
+constexpr Metrics kMetrics{6, 12, 6, 14, 12, true};
+#else
+// The upstream 5x7 font: printable ASCII and Latin-1, one column per code point.
+constexpr Metrics kMetrics{5, 7, 6, 9, 6, false};
+#endif
 
-// A 12x12 glyph as 12 rows of two bytes, bit 11 leftmost, or nullptr when the
-// font carries no glyph for that codepoint.
-const uint8_t* wide_bitmap(uint32_t cp);
+// Kept as names because the call sites read better with them; they are the metrics.
+inline constexpr int kGlyphWidth = kMetrics.glyph_w;
+inline constexpr int kGlyphHeight = kMetrics.glyph_h;
+inline constexpr int kCellWidth = kMetrics.cell_w;
+inline constexpr int kWideCellWidth = kMetrics.wide_w;
+inline constexpr int kCellHeight = kMetrics.cell_h;
+
+// One glyph as 1-bit rows, most significant bit leftmost, `row_bytes` per row.
+// False means the font has no glyph for `cp`, and the caller draws '?' instead.
+bool bitmap(uint32_t cp, int* w, int* h, int* row_bytes, const uint8_t** rows);
 
 // Decode one UTF-8 sequence at s[i] and advance i past it. A malformed byte
 // yields 0 and advances one byte, so callers can draw '?' and carry on.
@@ -50,7 +66,7 @@ inline uint32_t decode(std::string_view s, size_t& i) {
   return cp;
 }
 
-// Columns a UTF-8 string occupies: ASCII 1, everything else 2.
+// Columns a UTF-8 string occupies: ASCII 1, a wide glyph 2 (1 when the font has none).
 int columns(std::string_view s);
 
 }  // namespace hg::font

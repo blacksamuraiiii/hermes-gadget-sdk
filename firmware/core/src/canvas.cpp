@@ -97,22 +97,13 @@ void Canvas::bitmap1(int x, int y, int w, int h, const uint8_t* bits, uint16_t c
 
 namespace {
 
-void draw_narrow(Canvas& c, int x, int y, int scale, uint16_t color, char ch) {
-  const char* g = font::glyph(ch);
-  for (int row = 0; row < font::kGlyphHeight; ++row) {
-    for (int col = 0; col < font::kGlyphWidth; ++col) {
-      if (g[row * font::kGlyphWidth + col] == '#') {
-        c.fill_rect(x + col * scale, y + row * scale, scale, scale, color);
-      }
-    }
-  }
-}
-
-void draw_wide(Canvas& c, int x, int y, int scale, uint16_t color, const uint8_t* bm) {
-  for (int row = 0; row < font::kGlyphHeight; ++row) {
-    const unsigned bits = (static_cast<unsigned>(bm[2 * row]) << 8) | bm[2 * row + 1];
-    for (int col = 0; col < font::kWideCellWidth; ++col) {
-      if (bits & (1u << (11 - col))) {
+// Draws one glyph as a block of 1-bit rows, MSB leftmost in each byte.
+void draw_bitmap(Canvas& c, int x, int y, int scale, uint16_t color, int w, int h, int row_bytes,
+                 const uint8_t* rows) {
+  for (int row = 0; row < h; ++row) {
+    const uint8_t* bits = rows + row * row_bytes;
+    for (int col = 0; col < w; ++col) {
+      if ((bits[col >> 3] >> (7 - (col & 7))) & 1) {
         c.fill_rect(x + col * scale, y + row * scale, scale, scale, color);
       }
     }
@@ -123,21 +114,24 @@ void draw_wide(Canvas& c, int x, int y, int scale, uint16_t color, const uint8_t
 
 int Canvas::text(int x, int y, std::string_view s, int scale, uint16_t color) {
   if (scale < 1) scale = 1;
+  const font::Metrics& m = font::kMetrics;
   for (size_t i = 0; i < s.size();) {
     const uint32_t cp = font::decode(s, i);
-    if (cp != 0 && cp < 0x80) {
-      draw_narrow(*this, x, y, scale, color, static_cast<char>(cp));
-      x += font::kCellWidth * scale;
+    int w = 0, h = 0, row_bytes = 0;
+    const uint8_t* rows = nullptr;
+    const bool have = cp != 0 && font::bitmap(cp, &w, &h, &row_bytes, &rows);
+    // A wide glyph takes two columns; a code point the font lacks takes a wide cell and
+    // shows '?' instead, so a missing glyph never shifts the rest of the line.
+    const int advance = (have ? w > m.cell_w : m.wide) ? m.wide_w : m.cell_w;
+    if (!have) {
+      if (font::bitmap('?', &w, &h, &row_bytes, &rows)) {
+        draw_bitmap(*this, x + (advance - w) * scale / 2, y, scale, color, w, h, row_bytes, rows);
+      }
+      x += advance * scale;
       continue;
     }
-    const uint8_t* bm = cp ? font::wide_bitmap(cp) : nullptr;
-    if (bm) {
-      draw_wide(*this, x, y, scale, color, bm);
-    } else {
-      draw_narrow(*this, x + (font::kWideCellWidth - font::kGlyphWidth) * scale / 2, y, scale,
-                  color, '?');  // no glyph for it in this font
-    }
-    x += font::kWideCellWidth * scale;
+    draw_bitmap(*this, x + (advance - w) * scale / 2, y, scale, color, w, h, row_bytes, rows);
+    x += advance * scale;
   }
   return x;
 }
@@ -178,7 +172,7 @@ std::vector<Cell> cells_of(std::string_view s) {
     const size_t start = i;
     const uint32_t cp = font::decode(s, i);
     if (i == start) ++i;  // never loop on a byte the decoder refuses to consume
-    const int cols = (cp != 0 && cp < 0x80) ? 1 : 2;
+    const int cols = (cp != 0 && (cp < 0x80 || !font::kMetrics.wide)) ? 1 : 2;
     cells.push_back({start, i - start, cp, cols});
   }
   return cells;
