@@ -31,17 +31,27 @@ READY_MARKERS = ("USB link ready", "hg: online")
 BOOTING_REPLY = "@error ESP_ERR_INVALID_STATE"
 
 
-def _wait_ready(link: serial.Serial, timeout_s: float) -> bool:
+def _wait_ready(link: serial.Serial, timeout_s: float, quiet_s: float = 1.5):
+    """True once the boot line shows up, None if the port stayed silent.
+
+    Silence means the board did not reset when the port opened - it is already up -
+    so there is nothing to wait for. Data without the boot line means it is booting
+    and has not got there yet, which is what the caller wants to hear about.
+    """
     deadline = time.time() + timeout_s
+    quiet_deadline = time.time() + quiet_s
     seen = ""
+    heard = False
     while time.time() < deadline:
-        chunk = link.read(4096)
-        if not chunk:
-            continue
-        seen = (seen + chunk.decode("utf-8", "replace"))[-4096:]
-        if any(marker in seen for marker in READY_MARKERS):
-            return True
-    return False
+        chunk = link.read(1024)
+        if chunk:
+            heard = True
+            seen = (seen + chunk.decode("utf-8", "replace"))[-4096:]
+            if any(marker in seen for marker in READY_MARKERS):
+                return True
+        elif not heard and time.time() > quiet_deadline:
+            return None
+    return False if heard else None
 
 
 def _read_reply(link: serial.Serial, wait_s: float) -> tuple[int, str]:
@@ -71,8 +81,9 @@ def _read_reply(link: serial.Serial, wait_s: float) -> tuple[int, str]:
 def run(port: str, baud: int, command: str, wait_s: float, *,
         wait_ready: bool = True, ready_s: float = 5.0, attempts: int = 3) -> int:
     with serial.Serial(port, baud, timeout=0.2) as link:
-        if wait_ready and not _wait_ready(link, ready_s):
-            print(f"device did not announce itself within {ready_s}s; sending anyway", file=sys.stderr)
+        if wait_ready and _wait_ready(link, ready_s) is False:
+            print(f"device is still booting (no boot line in {ready_s}s); sending anyway",
+                  file=sys.stderr)
         code, text = 2, ""
         for attempt in range(1, attempts + 1):
             time.sleep(0.3)
