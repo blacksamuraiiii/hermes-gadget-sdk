@@ -75,6 +75,10 @@ DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as on
 PAIRING_TRIGGER = "/status"
 HOST_ONLY_TEXT = "Can't show all of it here. Approve or deny it on the host."
 VOICE_OFF_NOTICE = "Voice is off. This screen only shows reminders."
+# A press shorter than this is a key tap or a playback tail, not someone speaking. Such an
+# utterance used to start a turn with an empty transcript and hang for half an hour, so it is
+# dropped before Hermes ever sees it.
+MIN_UTTERANCE_S = 0.5
 _PAIRING_CMD = re.compile(r"(hermes\s+(?:-p\s+\S+\s+)?pairing\s+approve\s+\S+\s+([A-Z2-9]{8}))\b")
 # The gateway echoes speech-to-text results with this translated line: a microphone emoji and the
 # quoted transcript, quoted per language (Ukrainian uses «»). Patterns are built from the line itself.
@@ -548,6 +552,14 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             # (plus a turn end) is what lifts the device out of its thinking screen; a
             # notice alone would leave it waiting until the firmware's 3 min timeout.
             await session.send_reply(VOICE_OFF_NOTICE)
+            await session.turn_end("")
+            return
+        if seconds < MIN_UTTERANCE_S:
+            # Empty or near-empty captures are what started half-hour turns before: speech-to-text
+            # returns nothing, yet the turn runs. Drop it here, and end the turn so the screen
+            # does not sit on "thinking" until the firmware's own timeout.
+            logger.debug("[%s] %.2fs utterance from %s dropped: under %.1fs",
+                         self.name, seconds, session.device_id, MIN_UTTERANCE_S)
             await session.turn_end("")
             return
         path = await cache_audio_from_bytes_async(wav, ".wav")
