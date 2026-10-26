@@ -47,8 +47,13 @@ constexpr uint8_t kFramePing = 0x04;
 constexpr uint8_t kFrameHello = 0x05;
 constexpr uint8_t kFrameHelloAck = 0x06;
 
-// A 40 ms audio frame at 24 kHz PCM16 is 1920 B; JSON stays well under this.
-constexpr size_t kMaxFrame = 16 * 1024;
+// Two limits, on purpose. Receiving: the relay may hand over a whole message, so the
+// rx buffer and the frame parser accept kMaxRxFrame. Sending: frames go into the 4 KB
+// TX ring set up in begin(), and the largest thing the app sends is a 40 ms audio frame
+// at 24 kHz PCM16 = 1920 B, which SLIP escaping can at most double.
+constexpr size_t kMaxRxFrame = 16 * 1024;
+constexpr size_t kMaxTxFrame = 4 * 1024;
+static_assert(kMaxTxFrame >= 2 * 1920 + 8, "an escaped audio frame must fit the TX ring");
 constexpr size_t kMaxLine = 256;  // same limit the console REPL uses
 constexpr size_t kRxChunk = 512;
 constexpr int kTxSlots = 32;
@@ -210,7 +215,7 @@ void SerialLink::close() {
 bool SerialLink::stuck() const { return watch_.stuck(now_ms()); }
 
 bool SerialLink::enqueue(uint8_t type, const void* data, size_t len) {
-  if (!tx_ || !linked_ || len > kMaxFrame) return false;
+  if (!tx_ || !linked_ || len > kMaxTxFrame) return false;
   const uint8_t opcode = type == kFrameBinary ? hg::ws::kBinary : hg::ws::kText;
   if (!hg::ws::may_queue_message(uxQueueSpacesAvailable(tx_), opcode)) return false;  // the link isn't keeping up
   auto* copy = static_cast<uint8_t*>(heap_caps_malloc(len ? len : 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -243,10 +248,10 @@ void SerialLink::tx_task(void* arg) {
 
 void SerialLink::rx_task(void* arg) {
   auto* self = static_cast<SerialLink*>(arg);
-  auto* frame = static_cast<uint8_t*>(heap_caps_malloc(kMaxFrame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!frame) frame = static_cast<uint8_t*>(malloc(kMaxFrame));
+  auto* frame = static_cast<uint8_t*>(heap_caps_malloc(kMaxRxFrame, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!frame) frame = static_cast<uint8_t*>(malloc(kMaxRxFrame));
   if (!frame) {
-    ESP_LOGE(TAG, "no memory for a %u byte receive frame", static_cast<unsigned>(kMaxFrame));
+    ESP_LOGE(TAG, "no memory for a %u byte receive frame", static_cast<unsigned>(kMaxRxFrame));
     vTaskDelete(nullptr);
     return;
   }
@@ -285,11 +290,11 @@ void SerialLink::rx_task(void* arg) {
         } else if (escaped) {
           escaped = false;
           const uint8_t v = b == kEscEnd ? kEnd : b == kEscEsc ? kEsc : b;
-          if (frame_len < kMaxFrame) frame[frame_len++] = v;
+          if (frame_len < kMaxRxFrame) frame[frame_len++] = v;
           else overflow = true;
         } else if (b == kEsc) {
           escaped = true;
-        } else if (frame_len < kMaxFrame) {
+        } else if (frame_len < kMaxRxFrame) {
           frame[frame_len++] = b;
         } else {
           overflow = true;
