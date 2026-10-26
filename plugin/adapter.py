@@ -263,13 +263,18 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         return code == 0
 
     async def stop_relay_if_configured(self) -> None:
-        """Stop the relay on shutdown: it exists only for this gateway (see extras relay_stop)."""
+        """Stop the relay on shutdown: it exists only for this gateway (see extras relay_stop).
+
+        Best effort: the gateway shuts down while /mnt/c may already be gone, and the hook then
+        fails with "powershell.exe: not found". That is expected on this machine, so the failure
+        is a debug line, not a warning someone has to read every time they power off.
+        """
         if not self._relay_stop_cmd:
             return
         try:
             await self.run_relay_hook("stop")
         except Exception as exc:
-            logger.warning("[%s] could not stop the relay: %s", self.name, exc)
+            logger.debug("[%s] could not stop the relay (best effort): %s", self.name, exc)
 
     async def _watch_relay(self) -> None:
         """Keep the relay alive: a crashed relay, a pulled cable or a USB re-enumeration

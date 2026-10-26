@@ -90,22 +90,28 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 | 卡片 | 下行 `display {"title":...}`；CJK 固件上标题为中文 |
 | 熄屏后提醒 | 设备自报 `state display_sleeping:true`，播报时回 `false` 并出卡片 |
 | 语音已下线 | 屏显 `Voice is off...`，且 `gateway.log` 无 `platform=gadget` 的 inbound、无空回合 |
+| 空转写/静音不启回合 | 按住不到 0.5 s 或录到的是房间噪声时，设备收到 `Didn't catch that - hold the button while speaking`，`gateway.log` 无对应 inbound |
+| console 命令让路 | 停 relay 由 `tools/console_cmd.py` 自动处理（先停、发完再起）；判据是回复以 `@` 开头（`@ok` / `@value` / `@error`），期间无 `PermissionError(13)` |
 | 字号 | `gadget_devices` 上报 `text_cols=26, text_rows=5` |
 
 ---
 
 ## 四、已知边界与坑
 
-- GB2312 一级以外的罕字显示 `?`；升级二级字库需 +60% 空间（app 槽尚有余量）。
-- 打开 COM5 会复位设备，启动头 2–4 秒内发 console 命令会回 `@error ESP_ERR_INVALID_STATE`；`tools/console_cmd.py` 默认 `--wait-ready`，会等到启动行再发并自动重试，`--no-wait-ready` 才直发。
-- console 命令与 relay 抢同一个串口：先停 relay，发完再起（`tools/console_cmd.py` 会自动让开再恢复）。
-- **relay 不支持从 stdin 直接敲命令**：裸字节会插进 SLIP 帧中间，把帧打坏。要发 console 命令用 `tools/console_cmd.py`，它会先停 relay。
-- `tools/usb_relay.py --reset` 在本板上会让板子静默（RTS 复位后 usb-serial-jtag 不再应答），**不要用**；默认连接在跑的设备。
-- 设备 USB 侧会假死（屏还亮、串口一个字节不来）：先 `pnputil /scan-devices`，再拔插；看门狗会在 120 s 内重启 relay。
-- **端口被 Windows 停掉（设备代码 43，提示“请求 USB 设备描述符失败”）时，拔插板子没用**：Windows 把 hub 的那个端口连同复合设备节点一起扣住了，只有重启电脑或复位 hub 才清。顺序：先把 **hub 的上游线**拔下 3 秒插回（等效重启 hub，不用管理员、不用重启电脑），不行再把板子挪到主板直连口。本机 4 号口（VIA hub）已复现过，父设备为 `USB\VID_2109&PID_2817\MSFT20`，残留的失败节点是 `USB\VID_0000&PID_0002`（描述符请求失败）与 `USB\VID_0000&PID_0001`（端口重置失败）。
-- 重连是**退避**的：5、10、20、40，之后每 60 秒一次，端口回来会打 `serial recovered (...) after N attempt(s)`。连续 120 秒没有端口时 relay 会打一条提示（上面 code 43 那段），同一条警告不会每 5 秒刷一次。
-- 关机流程里 `/mnt/c` 已卸载，`relay_stop` 会报 `powershell.exe: not found`——属瞬态，重启后 gateway 会重新拉起。
-- 设备上电可能自己安装暂存固件并再重启一轮，收尾前确认暂存的就是想要的镜像。
+每条按「现象 / 处理 / 验收」写，不留纯描述。
+
+| 现象 | 处理 | 验收 |
+|---|---|---|
+| 罕字显示 `?`（GB2312 一级以外） | 字库已扩到 GB2312 全表：实收 6647 字（一级 3755 全覆盖、二级 2892/3008）；剩余缺口是源 BDF 本身没有这 116 个二级字 | 卡片里实际出现的罕字不再显示 `?`；`tools/make_cjk_font.py` 会打印缺字清单 |
+| 打开 COM5 会复位设备，启动头 2–4 秒内发 console 命令回 `@error ESP_ERR_INVALID_STATE` | `tools/console_cmd.py` 默认 `--wait-ready`：等启动行再发，命中该错误自动重试 3 次；`--no-wait-ready` 才直发 | 命令输出 `@ok` / `@value`，输出里不再出现 `ESP_ERR_INVALID_STATE` |
+| console 命令与 relay 抢同一个串口 | `console_cmd.py` 先停 relay，发完再起（无需手工 `taskkill`） | 发命令期间无 `PermissionError(13)`；发完 `relay.log` 重新出现 `hg: online (paired)` |
+| relay 不支持从 stdin 直接敲命令（裸字节插进 SLIP 帧中间把帧打坏） | 发 console 命令一律走 `tools/console_cmd.py`；relay 只负责帧转发 | 链路日志里没有坏帧/JSON 解析失败；console 回复都能拿到 `@` 开头的单行 |
+| `tools/usb_relay.py --reset` 在本板上让板子静默（RTS 复位后 usb-serial-jtag 不再应答） | 不要用 `--reset`，默认连接正在跑的设备；需要重启就断电或复位整板 | 用了会看到 relay 反复 `serial reopen failed (port missing)`，恢复要拔插或复位 hub —— 所以文档与 `--help` 都写明不用它 |
+| 设备 USB 侧假死：屏还亮，串口一个字节不来 | 先 `pnputil /scan-devices`，再拔插 USB 线；relay 空闲 60 s 无字节会自动重开端口 | 假死期间 `relay.log` 每 5–60 s 出现 `serial reopen failed (port missing)` 并计数；拔插后 `serial COM5 open` → `hg: online (paired)` |
+| 端口被 Windows 停掉（设备代码 43，「请求 USB 设备描述符失败」），拔插板子无效 | 顺序：①把 **hub 的上游线**拔下 3 秒插回（等效重启 hub，不用管理员、不用重启电脑）②把板子挪到主板直连口 ③重启。本机 4 号口（VIA hub，父设备 `USB\VID_2109&PID_2817\MSFT20`）复现过，残留失败节点是 `USB\VID_0000&PID_0002`（描述符请求失败）与 `USB\VID_0000&PID_0001`（端口重置失败） | 设备管理器里 `USB\VID_303A&PID_1001` 回到 OK、失败节点消失；`relay.log` 重新 `online (paired)` |
+| relay 掉线后重连 | 退避 5 / 10 / 20 / 40，之后每 60 秒一次；连续 120 秒没有端口会打一条 code 43 提示，同一条警告不会每 5 秒刷屏 | `relay.log` 出现 `serial recovered (...) after N attempt(s)`，且阶段间隔符合 5/10/20/40/60 |
+| 关机流程里 `/mnt/c` 已卸载，`relay_stop` 报 `powershell.exe: not found` | 属瞬态：插件把停 relay 的失败降级为 debug 日志，不再当错误刷屏 | 关机日志里不再出现该 WARNING；下次启动 gateway 会重新拉起 relay |
+| 设备上电可能自己安装暂存固件并再重启一轮 | 收尾检查项：断电前确认 `hermes gadget update` 暂存的镜像就是目标镜像（比 SHA256） | 重启后设备自报的版本与构建时间等于目标镜像（`diag` 的 `build` 字段） |
 
 ---
 
