@@ -113,26 +113,26 @@ def emit_ascii(glyphs, bbox, font_name: str) -> str:
         "namespace hg::font {",
         "namespace {",
         "",
-        "constexpr int kFirst = 0x20, kLast = 0x7E;",
-        "const char* const kGlyphs[kLast - kFirst + 1] = {",
+        "constexpr uint8_t kAsciiNarrow[95][12] = {",
     ]
     for cp in range(0x20, 0x7F):
         glyph = glyphs.get(cp)
         grid = rasterise(glyph, bbox, 6) if glyph else [[False] * 6 for _ in range(12)]
-        label = chr(cp) if cp != 0x22 else "'\\''"  # a comment can hold any of them
-        out.append(f"    // '{label}'" if cp != 0x22 else "    // '\"'")
-        rows = "".join("".join("#" if on else "." for on in row) for row in grid)
-        chunks = [f'"{rows[i:i + 6]}"' for i in range(0, len(rows), 6)]
-        out.append("    " + " ".join(chunks) + ",")
+        row_bytes = []
+        for row in grid:
+            value = 0
+            for on in row:
+                value = (value << 1) | (1 if on else 0)
+            row_bytes.append(f"0x{value << 2:02x}")  # MSB left-aligned, 6 bits of 8
+        out.append(f"    {{{', '.join(row_bytes)}}},  // 0x{cp:02X}")
     out += [
         "};",
         "",
         "}  // namespace",
         "",
-        "const char* glyph(char c) {",
-        "  const unsigned char u = static_cast<unsigned char>(c);",
-        "  if (u < kFirst || u > kLast) return kGlyphs['?' - kFirst];",
-        "  return kGlyphs[u - kFirst];",
+        "const uint8_t* ascii_rows(uint32_t cp) {",
+        "  if (cp < 0x20 || cp > 0x7E) return nullptr;",
+        "  return kAsciiNarrow[cp - 0x20];",
         "}",
         "",
         "}  // namespace hg::font",
@@ -156,6 +156,7 @@ def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
             value = 0
             for on in row:
                 value = (value << 1) | (1 if on else 0)
+            value <<= 4  # MSB left-aligned: byte0 bit 7 is the leftmost pixel (hg/font.hpp)
             data.append(f"0x{value >> 8:02x}, 0x{value & 0xFF:02x}")
         blobs.append(", ".join(data))
     out = [

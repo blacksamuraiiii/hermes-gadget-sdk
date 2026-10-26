@@ -98,6 +98,26 @@ TEST("font: the 5x7 table carries Latin-1 and questions CJK") {
 }
 #endif
 
+TEST("font: wide glyphs are left-aligned, so a glyph is never cropped") {
+  // 一 is one horizontal stroke; it must start at column 0 of its cell. Right-aligned
+  // rows would shift every hanzi four pixels right and cut its right edge.
+  int w = 0, h = 0, row_bytes = 0;
+  const uint8_t* rows = nullptr;
+  CHECK(font::bitmap(0x4E00, &w, &h, &row_bytes, &rows));  // 一
+  CHECK_EQ(w, 12);
+  CHECK_EQ(row_bytes, 2);
+  bool seen = false;
+  for (int r = 0; r < h; ++r) {
+    const int value = (rows[r * 2] << 8) | rows[r * 2 + 1];
+    CHECK_EQ(value & 0x0F, 0);  // the low nibble of the second byte stays empty
+    if (value != 0 && !seen) {
+      CHECK_EQ((value >> 15) & 1, 1);  // the stroke reaches the leftmost pixel
+      seen = true;
+    }
+  }
+  CHECK(seen);
+}
+
 TEST("canvas: text advances one cell per narrow glyph") {
   std::vector<uint16_t> fb(240 * 240, 0);
   Canvas c(fb.data(), 240, 240, /*swap_bytes=*/false);
