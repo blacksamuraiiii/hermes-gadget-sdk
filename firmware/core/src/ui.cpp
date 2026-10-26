@@ -667,8 +667,8 @@ void Ui::draw_dashboard(Canvas& c, const UiModel& m, int y0, int y1) {
     const int lx = margin + 2 * r + 3 * s;
     const int cols = cols_for(right - lx, s);
     // The value keeps up to half the row; the label gets the rest, less a space.
-    const std::string value = fit(row.value, std::min<int>(static_cast<int>(row.value.size()), cols / 2));
-    const int value_cols = static_cast<int>(value.size());
+    const std::string value = fit(row.value, std::min(font::columns(row.value), cols / 2));
+    const int value_cols = font::columns(value);
     c.text(lx, ty, fit(row.label, cols - value_cols - (value_cols ? 1 : 0)), s, kText);
     if (value_cols) c.text(right - Canvas::text_width(value, s), ty, value, s, tone_color(row.tone));
   }
@@ -741,7 +741,8 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   if (static_cast<int>(g.detail.size()) > max_lines) {
     g.detail.resize(static_cast<size_t>(max_lines));
     std::string& last = g.detail.back();
-    if (static_cast<int>(last.size()) + 2 > cols) last.resize(static_cast<size_t>(std::max(0, cols - 2)));
+    // Columns are letters, not bytes: an accented or hanzi line must not be cut early or mid-letter.
+    if (font::columns(last) + 2 > cols) last.resize(font::prefix(last, std::max(0, cols - 2)));
     last += "..";
   }
   // Reserve one detail line even when there is none, so the mascot keeps its size.

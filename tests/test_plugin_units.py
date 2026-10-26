@@ -26,6 +26,15 @@ def test_typography_and_accents_fold_to_ascii_and_emoji_drop():
     assert out == "Cafe \"quoted\" - it's 20 degC"
 
 
+def test_latin1_charset_keeps_accents_and_folds_typography():
+    out = textfmt.for_device("Café “quoted” — it’s 20°C \U0001F600", charset="latin1")
+    assert out == "Café \"quoted\" - it's 20°C"
+
+
+def test_latin1_charset_drops_soft_hyphen_and_keeps_nbsp_as_a_space():
+    assert textfmt.for_device("co\u00adoperate\u00a0now", charset="latin1") == "cooperate now"
+
+
 def test_think_blocks_never_reach_the_screen():
     assert textfmt.for_device("<think>secret plan</think>Answer") == "Answer"
 

@@ -250,6 +250,9 @@ std::string format(std::string_view text, std::initializer_list<std::string_view
 // The nearest ASCII for UTF-8 text: accents dropped, ¿ and ¡ left out,
 // typographic punctuation replaced; anything else becomes '?'.
 std::string fold_ascii(std::string_view utf8);
+// UTF-8 text folded to what this build's font draws: glyphs it has are kept as
+// written, typographic punctuation replaced, anything else its nearest ASCII or '?'.
+std::string fold_to_font(std::string_view utf8);
 
 // A board's control name in `lang`: the words above are translated, a button's
 // printed name (BOOT, PWR, TALK, ...) is kept.

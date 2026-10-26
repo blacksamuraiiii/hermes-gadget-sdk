@@ -73,6 +73,31 @@ def fold_ascii(text: str) -> str:
     return "".join(out)
 
 
+def fold_latin1(text: str) -> str:
+    """For a device whose font draws Latin-1 too: keep ASCII and U+00A1..U+00FF, fold the rest."""
+    out = []
+    for ch in text:
+        if ch == "\n" or " " <= ch <= "~" or ("\xa1" <= ch <= "\xff" and ch != "\xad"):
+            out.append(ch)
+            continue
+        if ch == "\xa0":  # the device breaks lines only at plain spaces
+            out.append(" ")
+            continue
+        if ch == "\xad":  # soft hyphen: invisible unless a line breaks there, and the device never does
+            continue
+        if ch in _PUNCT:
+            out.append(_PUNCT[ch])
+            continue
+        decomposed = unicodedata.normalize("NFKD", ch)
+        kept = "".join(c for c in decomposed if " " <= c <= "~" or "\xa1" <= c <= "\xff")
+        if kept:
+            out.append(kept)
+        elif ch == "\t":
+            out.append(" ")
+        # Anything else (emoji, symbols, other scripts) is dropped.
+    return "".join(out)
+
+
 def _drawable(ch: str) -> bool:
     """True when the device's font can draw this character.
 
@@ -91,7 +116,10 @@ def _drawable(ch: str) -> bool:
 
 def for_device(text: str, charset: str = "ascii") -> str:
     text = strip_markdown(text or "")
-    if charset == "ascii":
+    if charset == "latin1":
+        # The 5x7 font draws Latin-1 as well, so accents stay instead of folding to ASCII.
+        text = fold_latin1(text)
+    elif charset == "ascii":
         text = fold_ascii(text)
     elif charset.replace("-", "").lower() in ("utf8", "utf_8"):
         # Keep the CJK; drop what the font cannot draw instead of showing '?'.

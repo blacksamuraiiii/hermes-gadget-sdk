@@ -69,4 +69,15 @@ inline uint32_t decode(std::string_view s, size_t& i) {
 // Columns a UTF-8 string occupies: ASCII 1, a wide glyph 2 (1 when the font has none).
 int columns(std::string_view s);
 
+// Bytes taken by the first `cols` columns of `s` (all of it when shorter), so a cut
+// never lands inside a UTF-8 sequence.
+size_t prefix(std::string_view s, int cols);
+
+// True when this font has its own glyph for `cp`; 0 (a malformed byte) has none.
+inline bool drawable(uint32_t cp) {
+  int w = 0, h = 0, row_bytes = 0;
+  const uint8_t* rows = nullptr;
+  return cp != 0 && bitmap(cp, &w, &h, &row_bytes, &rows);
+}
+
 }  // namespace hg::font

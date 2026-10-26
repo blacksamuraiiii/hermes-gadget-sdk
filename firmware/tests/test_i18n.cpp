@@ -87,21 +87,26 @@ TEST("i18n: each translation is complete and keeps the English placeholders") {
   }
 }
 
-TEST("i18n: drawn text is plain ASCII, the only characters the font has") {
+TEST("i18n: drawn text is in the font: ASCII and, where the build has them, Latin-1") {
   for (size_t l = 0; l < hg::i18n::kLangCount; ++l) {
     for (Msg m : all_messages()) {
-      for (const char* p = hg::i18n::text(static_cast<Lang>(l), m); *p; ++p) {
-        const unsigned char c = static_cast<unsigned char>(*p);
-        if (c != '\n' && (c < 0x20 || c > 0x7E)) {
-          check::fail(__FILE__, __LINE__, std::string("non-ASCII in \"") + hg::i18n::text(static_cast<Lang>(l), m) + "\"");
+      const std::string_view t = hg::i18n::text(static_cast<Lang>(l), m);
+      for (size_t i = 0; i < t.size();) {
+        const uint32_t cp = hg::font::decode(t, i);
+        if (cp != '\n' && !hg::font::drawable(cp)) {
+          check::fail(__FILE__, __LINE__, std::string("not in the font: \"") + std::string(t) + "\"");
           break;
         }
       }
     }
   }
-  // Written with its accents, read without them.
+  // Written with its accents; drawn with them when the font carries the glyph, folded otherwise.
   CHECK_EQ(std::string(hg::i18n::translation(Lang::Es, Msg::DeviceInfo)), std::string("Información"));
+#if HG_FONT_CJK
   CHECK_EQ(std::string(hg::i18n::text(Lang::Es, Msg::DeviceInfo)), std::string("Informacion"));
+#else
+  CHECK_EQ(std::string(hg::i18n::text(Lang::Es, Msg::DeviceInfo)), std::string("Información"));
+#endif
 }
 
 TEST("i18n: folding keeps ASCII and finds the nearest letter for the rest") {
@@ -115,6 +120,41 @@ TEST("i18n: folding keeps ASCII and finds the nearest letter for the rest") {
   CHECK_EQ(fold_ascii("a\xC3"), std::string("a?"));       // a sequence cut short
   CHECK_EQ(fold_ascii("\xA9z"), std::string("?z"));       // a stray continuation byte
   CHECK_EQ(fold_ascii("line\nbreak"), std::string("line\nbreak"));
+}
+
+TEST("i18n: folding to the font keeps what it draws and stands in for the rest") {
+  using hg::i18n::fold_to_font;
+  // Typographic punctuation always gets its ASCII stand-in.
+  CHECK_EQ(fold_to_font("“quoted” – it’s…"), std::string("\"quoted\" - it's..."));
+  CHECK_EQ(fold_to_font("Ready"), std::string("Ready"));
+  CHECK_EQ(fold_to_font("line\nbreak"), std::string("line\nbreak"));
+  CHECK_EQ(fold_to_font("a\xC3"), std::string("a?"));  // a sequence cut short reads as one '?'
+#if HG_FONT_CJK
+  // This build carries ASCII and GB2312 hanzi: hanzi are kept, accents degrade to their base letter.
+  CHECK_EQ(fold_to_font("\xE6\x97\xA5\xE6\x9C\xAC"), std::string("\xE6\x97\xA5\xE6\x9C\xAC"));
+  CHECK_EQ(fold_to_font("¿Cómo estás?"), std::string("Como estas?"));
+#else
+  // The 5x7 table draws Latin-1, so accents are kept as written; hanzi have no glyph.
+  CHECK_EQ(fold_to_font("¿Cómo estás? ¡Sí! Ñandú"), std::string("¿Cómo estás? ¡Sí! Ñandú"));
+  CHECK_EQ(fold_to_font("\xE6\x97\xA5\xE6\x9C\xAC"), std::string("??"));
+#endif
+}
+
+TEST("font: prefix cuts a string between letters, never inside one") {
+  CHECK_EQ(hg::font::prefix("abc", 0), size_t(0));
+  CHECK_EQ(hg::font::prefix("abc", 2), size_t(2));
+  CHECK_EQ(hg::font::prefix("abc", 9), size_t(3));
+#if HG_FONT_CJK
+  // A hanzi takes two columns; a cut that cannot fit it stops before it.
+  CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 1), size_t(0));
+  CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 2), size_t(3));
+  CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 3), size_t(4));
+#else
+  CHECK_EQ(hg::font::prefix("a\xC3\xB1z", 1), size_t(1));  // "a"
+  CHECK_EQ(hg::font::prefix("a\xC3\xB1z", 2), size_t(3));  // "añ"
+#endif
+  const std::string_view accented = "a\xC3\xB1z";
+  CHECK_EQ(hg::font::prefix(accented, 99), accented.size());  // all of it when it fits
 }
 
 TEST("i18n: format fills placeholders in any order and keeps the ones it has no value for") {
@@ -254,9 +294,10 @@ constexpr Panel kPanels[] = {
 
 void check_fits(Lang lang, Msg m, int cols, const Panel& p) {
   const std::string en = filled(Lang::En, m), t = filled(lang, m);
-  if (static_cast<int>(en.size()) <= cols && static_cast<int>(t.size()) > cols)
+  const int en_cols = hg::font::columns(en), t_cols = hg::font::columns(t);
+  if (en_cols <= cols && t_cols > cols)
     check::fail(__FILE__, __LINE__,
-                std::string(hg::i18n::info(lang).code) + " \"" + t + "\" (" + std::to_string(t.size()) + ") is cut at " +
+                std::string(hg::i18n::info(lang).code) + " \"" + t + "\" (" + std::to_string(t_cols) + ") is cut at " +
                     std::to_string(cols) + " columns on " + std::to_string(p.w) + "x" + std::to_string(p.h) +
                     (p.round ? " round" : "") + ", where \"" + en + "\" fits");
 }

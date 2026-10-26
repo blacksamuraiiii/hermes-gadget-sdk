@@ -251,4 +251,22 @@ int columns(std::string_view s) {
   return total;
 }
 
+size_t prefix(std::string_view s, int cols) {
+  if (cols <= 0) return 0;
+  int total = 0;
+  size_t i = 0;
+  while (i < s.size()) {
+    const size_t start = i;
+    const uint32_t cp = hg::font::decode(s, i);
+    if (i == start) break;
+    const int add = (cp != 0 && (cp < 0x80 || !hg::font::kMetrics.wide)) ? 1 : 2;
+    if (total + add > cols) {
+      i = start;
+      break;
+    }
+    total += add;
+  }
+  return i;
+}
+
 }  // namespace hg::font
