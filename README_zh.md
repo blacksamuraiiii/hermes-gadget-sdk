@@ -97,8 +97,10 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 ## 四、已知边界与坑
 
 - GB2312 一级以外的罕字显示 `?`；升级二级字库需 +60% 空间（app 槽尚有余量）。
-- 打开 COM5 会复位设备，启动头 2–4 秒内发 console 命令会回 `@error ESP_ERR_INVALID_STATE`，等启动完再发。
+- 打开 COM5 会复位设备，启动头 2–4 秒内发 console 命令会回 `@error ESP_ERR_INVALID_STATE`；`tools/console_cmd.py` 默认 `--wait-ready`，会等到启动行再发并自动重试，`--no-wait-ready` 才直发。
 - console 命令与 relay 抢同一个串口：先停 relay，发完再起（`tools/console_cmd.py` 会自动让开再恢复）。
+- **relay 不支持从 stdin 直接敲命令**：裸字节会插进 SLIP 帧中间，把帧打坏。要发 console 命令用 `tools/console_cmd.py`，它会先停 relay。
+- `tools/usb_relay.py --reset` 在本板上会让板子静默（RTS 复位后 usb-serial-jtag 不再应答），**不要用**；默认连接在跑的设备。
 - 设备 USB 侧会假死（屏还亮、串口一个字节不来）：先 `pnputil /scan-devices`，再拔插；看门狗会在 120 s 内重启 relay。
 - 关机流程里 `/mnt/c` 已卸载，`relay_stop` 会报 `powershell.exe: not found`——属瞬态，重启后 gateway 会重新拉起。
 - 设备上电可能自己安装暂存固件并再重启一轮，收尾前确认暂存的就是想要的镜像。
