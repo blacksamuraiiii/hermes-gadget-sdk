@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Upstream 0.3.0 → 0.4.1: what this fork took, weighed, and left out
+
+Fork point `469978c` (2026-10-21) to upstream `0fdb676` (2026-10-26): 220 commits, releases v0.3.0 / v0.4.0 / v0.4.1. Nothing is merged wholesale — the fork rewrote the font layer (core), the relay and the reminder bridge (adapter), and board bring-up, so each change is picked by hand with `git cherry-pick -x` on `upstream-tracking`, and the font work is taken as semantics rather than as a patch.
+
+Adopted:
+
+- A speaker stream that starts right after another no longer loses the first tone (upstream `2fe13d5`, v0.4.0) → `af9c503`.
+- `gadget update --latest` compares versions and refuses to install an older release (upstream `0c459f7`, `1a3b86e`; v0.4.1) → `7152feb`, `c803e0f`.
+- The plugin compatibility gate registers every module-level import, class-body imports included (upstream `327946a`, `e795bb5`; v0.4.1) → `fb30e8a`, `3189508`.
+- Text is drawn, folded, cut and wrapped by columns instead of bytes, and the font can draw Latin-1 as well as ASCII (upstream `13b0980`, `54ae3cb`; v0.3.0) → `4ee1a34`. Taken as semantics: the fork's font layer already carries the metrics/bitmap/UTF-8 design, so the upstream patch would have overwritten it.
+
+Weighed, conclusion only:
+
+- Per-profile faces are not in 0.2. The moji board has 8 MB of PSRAM, but it is a reminder screen with no touch and no way to switch profile, and the feature needs firmware and plugin work on both sides.
+- A timer that ends does reach the existing reminder bridge (cue and card). That is on the 0.2 task list.
+
+Left out, and why:
+
+- Resting clock: no RTC on the board and no independent network time source over USB, and the protocol carries no time, so the clock face could never be right.
+- Face-down sleep: no IMU on the board; `BoardConfig::imu` stays unset.
+- Dashboard and profile switching: no CANCEL key and no touch, so `caps.dashboard` is not advertised and the reminder bridge stays this board's delivery path.
+- Installer site dependency bumps: unrelated to this board.
+
 ### Hermes plugin
 
 - `hermes gadget update <device> --latest` no longer installs an older release over a device that runs newer firmware. It compares the leading `MAJOR.MINOR.PATCH` numbers, so 0.10.0 is newer than 0.9.0 and a source build such as `0.4.0-12-gabc1234` counts as at least 0.4.0. A device on the release's version or a newer one gets a one-line message and nothing installed; a device whose version is missing or unreadable is refused with a message. `--force` installs the release in every case. Reported by @mforce.
