@@ -8,6 +8,7 @@ Fork point `469978c` (2026-10-21) to upstream `0fdb676` (2026-10-26): 220 commit
 
 Adopted:
 
+- The stuck-send check no longer restarts a board in the middle of a recording. It read the clock before it read when the current send began, so a message the send task started in between looked about 49 days old, and the board logged "the WebSocket send task is stuck; restarting" and reset itself a few seconds after TALK. The check now uses a signed difference. (upstream `3d98df6`; seen on an AMOLED-1.75C) → this commit.
 - A speaker stream that starts right after another no longer loses the first tone (upstream `2fe13d5`, v0.4.0) → `af9c503`.
 - `gadget update --latest` compares versions and refuses to install an older release (upstream `0c459f7`, `1a3b86e`; v0.4.1) → `7152feb`, `c803e0f`.
 - The plugin compatibility gate registers every module-level import, class-body imports included (upstream `327946a`, `e795bb5`; v0.4.1) → `fb30e8a`, `3189508`.
