@@ -3061,3 +3061,26 @@ TEST("language: the status report keeps its English reason while the screen tran
   CHECK(r.app.model().detail.rfind("No hay servidor de Hermes configurado", 0) == 0);
   CHECK(r.app.console("status").find("No Hermes server configured") != std::string::npos);
 }
+
+// The link can drop between the "can I talk?" check and the write itself. Entering
+// Thinking then would leave the screen waiting for a reply to a message nobody got.
+TEST("app: a text that cannot be sent does not enter Thinking") {
+  Rig r;
+  r.bring_online(true);
+  r.fake.refuse_text = true;
+  r.app.submit_text("hello");
+  CHECK(r.app.screen() != hg::Screen::Thinking);
+  CHECK_EQ(r.app.model().detail, std::string("Not connected to Hermes"));
+}
+
+// A turn that started and then went silent (no turn.end, no reply_final) used to keep
+// the screen in Responding for ever, where no card or reminder can show.
+TEST("app: a turn that goes quiet leaves Responding by itself") {
+  Rig r;
+  r.bring_online(true);
+  r.server(R"({"type":"turn.start","turn":"t"})");
+  r.server(R"({"type":"reply","turn":"t","text":"half an answer"})");
+  CHECK(r.app.screen() == hg::Screen::Responding);
+  r.advance(200000);  // past the 180 s no-news limit
+  CHECK(r.app.screen() != hg::Screen::Responding);
+}

@@ -1099,7 +1099,14 @@ void App::submit_text(std::string_view text) {
   request_id_ = next_id('t');
   json::Value msg = proto::message("text");
   msg.set("id", request_id_).set("text", t);
-  send(msg);
+  if (!send(msg)) {
+    // The link dropped between the can_talk() check and the write. Entering Thinking
+    // here would leave the screen waiting for a reply to a message nobody received.
+    notice_ = tr(i18n::Msg::NotConnected);
+    notice_until_ = now() + 8000;
+    update_model();
+    return;
+  }
   user_echo_ = t;
   reply_.clear();
   status_ = tr(i18n::Msg::Sending);
@@ -1450,6 +1457,15 @@ void App::tick() {
   if (!prompt_id_.empty()) last_turn_rx_ = t;  // Hermes is waiting for the user, not stuck
   if (mode_ == Mode::Thinking && t - last_turn_rx_ > kThinkingTimeoutMs) {
     mode_ = Mode::Idle;
+    notice_ = tr(i18n::Msg::NoReplyFromHermes);
+    notice_until_ = t + 8000;
+    update_model();
+  }
+  // A turn that started and then went quiet (link dropped mid-reply, no turn.end) would
+  // otherwise keep the screen in Responding for ever, where no card or reminder shows.
+  if (mode_ == Mode::Responding && !speaking() && t - last_turn_rx_ > kThinkingTimeoutMs) {
+    mode_ = Mode::Idle;
+    mode_since_ = t;
     notice_ = tr(i18n::Msg::NoReplyFromHermes);
     notice_until_ = t + 8000;
     update_model();
