@@ -98,6 +98,7 @@ TEST("font: the 5x7 table carries Latin-1 and questions CJK") {
 }
 #endif
 
+#if HG_FONT_CJK
 TEST("font: wide glyphs are left-aligned, so a glyph is never cropped") {
   // 一 is one horizontal stroke; it must start at column 0 of its cell. Right-aligned
   // rows would shift every hanzi four pixels right and cut its right edge.
@@ -117,6 +118,7 @@ TEST("font: wide glyphs are left-aligned, so a glyph is never cropped") {
   }
   CHECK(seen);
 }
+#endif
 
 TEST("canvas: text advances one cell per narrow glyph") {
   std::vector<uint16_t> fb(240 * 240, 0);
