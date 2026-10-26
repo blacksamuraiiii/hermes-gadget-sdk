@@ -237,6 +237,36 @@ menu "Hermes Gadget"
         config HG_STATUS_LED
             int "Status LED GPIO, exposed to the agent as led.set (-1 = none)"
             default -1
+
     endmenu
+
+    # Wake word. Deliberately outside "Custom board pins": that menu is gated on
+    # HG_BOARD_CUSTOM, and these options belong to a real board.
+    config HG_WAKE_MULTINET
+        bool "Wake word via esp-sr MultiNet (needs the model partition)"
+        default n
+        depends on HG_BOARD_MOVECALL_MOJI
+        help
+            Runs a MultiNet command-word detector on the microphone while the
+            device is idle, so the user can start a turn by speaking instead of
+            holding BOOT. Commands are plain pinyin strings, so the wake words are
+            build options rather than trained models. Needs the `model` partition
+            in partitions.csv, which `idf.py flash` writes and `app-flash` does not.
+
+    config HG_WAKE_THRESHOLD
+        int "Wake word detection threshold (1-99, lower is more sensitive)"
+        range 1 99
+        default 20
+        depends on HG_WAKE_MULTINET
+
+    config HG_WAKE_CMD0
+        string "Wake command 0, pinyin with spaces"
+        default "ni hao xiao mo"
+        depends on HG_WAKE_MULTINET
+
+    config HG_WAKE_CMD1
+        string "Wake command 1, pinyin with spaces"
+        default "xiao mo xiao mo"
+        depends on HG_WAKE_MULTINET
 
 endmenu

@@ -8,6 +8,7 @@
 #include "hg/crypto.hpp"
 #include "hg/protocol.hpp"
 #include "hg/wifi_networks.hpp"
+#include "hg/wake.hpp"
 
 namespace hg {
 namespace {
@@ -966,6 +967,9 @@ void App::on_button(Button button, bool pressed) {
 void App::start_listening(bool hands_free) {
   stop_playback();
   dismiss_overlay();
+  // The wake engine holds the microphone while the device is idle; hand it over
+  // before opening the talk session at the profile's own rate.
+  hg::wake_pause();
   if (!hal_.mic || !hal_.mic->start(profile_.mic_rate)) {
     set_hint_flash(tr(i18n::Msg::MicUnavailable));
     return;
@@ -997,6 +1001,7 @@ void App::start_listening(bool hands_free) {
 
 void App::finish_listening() {
   if (hal_.mic) hal_.mic->stop();
+  hg::wake_resume();
   json::Value end = proto::message("audio.end");
   end.set("id", request_id_).set("stream", mic_stream_).set("duration_ms", now() - mode_since_);
   if (mic_unsent_)

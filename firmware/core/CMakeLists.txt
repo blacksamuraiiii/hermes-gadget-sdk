@@ -20,6 +20,7 @@ set(HG_CORE_SOURCES
     src/touch.cpp
     src/ui.cpp
     src/vad.cpp
+    src/wake.cpp
     src/wifi_networks.cpp
     # Vendored QR encoder (MIT, Richard Moore / Project Nayuki). Adapted for this
     # project; see NOTICE. Committed as .cpp because the project is CXX-only.
