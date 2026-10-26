@@ -1,5 +1,9 @@
 # 路线 B：hermes-gadget（接 Hermes Agent）
 
+- 用途：主路线记录——三件套、port 工作量评估、本板 `make()` 目标值。
+- 核对日期：2026-10-26。**文内「支持表快照」是 2026-10-22 的值，勿当常量**；命令与支持表以仓库当日内容为准。
+- 现状：port 已落地并实机验收（v0.1），下文评估保留为「当时怎么算的」。
+
 来源：`github.com/Adolanium/hermes-gadget-sdk`（MIT，社区项目，非 Nous 官方）。2026-10-22 读 README 与 `docs/supported-hardware.md`。SDK 迭代快，命令与支持表以仓库当日内容为准。
 
 ## 它是什么

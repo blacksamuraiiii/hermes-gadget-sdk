@@ -110,7 +110,7 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 - **提示词唤醒**：让屏在人说话时被动唤醒（上游 README 明确 wake-word 未包含），计划先做关键词唤醒而非完整唤醒词引擎。
 - 进程外投递（`standalone_sender_fn` + spool）：搁置，等需求明确再做。
 
-计划与决策记录在 [notes/决策记录.md](notes/决策记录.md)；硬件参数、路线对比在 `notes/` 下。
+计划、决策与实测记录在 [notes/](notes/README.md)：现状入口 `notes/README.md`，决策依据 `notes/决策-台账.md`，0.1 实测 `notes/验收-0.1实测记录.md`，本机环境与坑 `notes/环境-本机工具链与坑.md`。
 
 ---
 
