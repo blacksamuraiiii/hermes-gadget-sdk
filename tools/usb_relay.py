@@ -53,8 +53,30 @@ IDLE_TIMEOUT = 30.0
 # and rescans for the device instead of waiting for someone to replug the cable.
 DEVICE_SILENT_S = 60.0
 REOPEN_EVERY_S = 5.0
+# A port that stays missing is usually not a flapping cable: the board is unplugged, or Windows
+# has stopped the port altogether (device code 43 — see README_zh.md). Retrying every 5 s forever
+# floods the log and keeps poking the USB hub, so each failure doubles the wait up to REOPEN_MAX_S.
+REOPEN_MAX_S = 60.0
+# After this long with no port at all, say once what the fix is: a hand on the cable, not a retry.
+PORT_MISSING_HINT_S = 120.0
 WS_PATH_DEFAULT = "/gadget"
 SUB_DEFAULT = "hermes-gadget.v1"
+
+
+def reopen_delay(attempt: int) -> float:
+    """Seconds to wait before reopen attempt ``attempt`` (1-based): 5, 10, 20, 40, then 60."""
+    if attempt <= 1:
+        return REOPEN_EVERY_S
+    return min(REOPEN_EVERY_S * (2 ** (attempt - 1)), REOPEN_MAX_S)
+
+
+def reopen_is_worth_logging(attempt: int) -> bool:
+    """True on a backoff stage change (or the first attempt) and on every tenth retry after that.
+
+    430 identical "port missing" lines in one afternoon is how a wedged port hides: nobody reads
+    the log any more. One line per stage keeps the shape visible, the rest go to DEBUG.
+    """
+    return attempt <= 1 or attempt % 10 == 0 or reopen_delay(attempt) != reopen_delay(attempt - 1)
 
 
 def encode_frame(ftype: int, payload: bytes = b"") -> bytes:
@@ -163,6 +185,9 @@ class Relay:
         self.last_tx = time.monotonic()
         self.last_device = time.monotonic()  # last byte read from the board
         self.write_lock = asyncio.Lock()
+        self.reopen_attempts = 0             # consecutive failed opens since the port was last up
+        self.reopen_since: float | None = None
+        self.port_missing_hinted = False
 
     # ---- serial -----------------------------------------------------------
     def open_serial(self) -> None:
@@ -198,12 +223,45 @@ class Relay:
         try:
             await asyncio.to_thread(self.open_serial)
         except Exception as exc:  # noqa: BLE001 - the board may be gone for a while
-            LOG.warning("serial reopen failed (%s): %s", why, exc)
-            await asyncio.sleep(REOPEN_EVERY_S)
+            await self.wait_before_reopen(f"serial reopen failed ({why})", exc)
             return
         self.decoder = SlipDecoder()  # a fresh reader: drop any half frame
         self.last_device = self.last_rx = time.monotonic()
-        LOG.info("serial recovered (%s)", why)
+        self.port_came_back(why)
+
+    def port_came_back(self, why: str) -> None:
+        """The port is open again: forget the backoff and say how long it took."""
+        if self.reopen_attempts:
+            LOG.info("serial recovered (%s) after %d attempt(s)", why, self.reopen_attempts)
+        else:
+            LOG.info("serial recovered (%s)", why)
+        self.reopen_attempts = 0
+        self.reopen_since = None
+        self.port_missing_hinted = False
+
+    async def wait_before_reopen(self, why: str, exc: Exception) -> None:
+        """Count a failed open, log it once per backoff stage, and wait longer each time.
+
+        A port that is gone for minutes is a hand-on-the-cable problem: Windows may have stopped
+        it as device code 43, where no reopen succeeds until the hub or the PC is reset. Say that
+        once rather than repeating the same warning twice a minute.
+        """
+        self.reopen_attempts += 1
+        if self.reopen_since is None:
+            self.reopen_since = time.monotonic()
+        delay = reopen_delay(self.reopen_attempts)
+        line = "%s: %s (attempt %d, next try in %.0f s)"
+        if reopen_is_worth_logging(self.reopen_attempts):
+            LOG.warning(line, why, exc, self.reopen_attempts, delay)
+        else:
+            LOG.debug(line, why, exc, self.reopen_attempts, delay)
+        missing = time.monotonic() - self.reopen_since
+        if not self.port_missing_hinted and missing >= PORT_MISSING_HINT_S:
+            self.port_missing_hinted = True
+            LOG.warning("no board on the bus for %.0f s: if the cable is connected, Windows may have "
+                        "stopped the port (device code 43) - unplug the hub's upstream cable for 3 s, "
+                        "or see the USB section of README_zh.md", missing)
+        await asyncio.sleep(delay)
 
     async def write_frame(self, ftype: int, payload: bytes = b"") -> None:
         if not self.ser:
@@ -342,8 +400,8 @@ class Relay:
                 self.open_serial()
                 break
             except Exception as exc:  # noqa: BLE001 - no board on the bus yet
-                LOG.warning("waiting for the board: %s", exc)
-                await asyncio.sleep(REOPEN_EVERY_S)
+                await self.wait_before_reopen("waiting for the board", exc)
+        self.reopen_attempts, self.reopen_since, self.port_missing_hinted = 0, None, False
         tasks = [asyncio.create_task(self.serial_reader(), name="serial"),
                  asyncio.create_task(self.ws_reader(), name="ws"),
                  asyncio.create_task(self.watchdog(), name="watchdog")]

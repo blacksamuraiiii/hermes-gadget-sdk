@@ -102,6 +102,8 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 - **relay 不支持从 stdin 直接敲命令**：裸字节会插进 SLIP 帧中间，把帧打坏。要发 console 命令用 `tools/console_cmd.py`，它会先停 relay。
 - `tools/usb_relay.py --reset` 在本板上会让板子静默（RTS 复位后 usb-serial-jtag 不再应答），**不要用**；默认连接在跑的设备。
 - 设备 USB 侧会假死（屏还亮、串口一个字节不来）：先 `pnputil /scan-devices`，再拔插；看门狗会在 120 s 内重启 relay。
+- **端口被 Windows 停掉（设备代码 43，提示“请求 USB 设备描述符失败”）时，拔插板子没用**：Windows 把 hub 的那个端口连同复合设备节点一起扣住了，只有重启电脑或复位 hub 才清。顺序：先把 **hub 的上游线**拔下 3 秒插回（等效重启 hub，不用管理员、不用重启电脑），不行再把板子挪到主板直连口。本机 4 号口（VIA hub）已复现过，父设备为 `USB\VID_2109&PID_2817\MSFT20`，残留的失败节点是 `USB\VID_0000&PID_0002`（描述符请求失败）与 `USB\VID_0000&PID_0001`（端口重置失败）。
+- 重连是**退避**的：5、10、20、40，之后每 60 秒一次，端口回来会打 `serial recovered (...) after N attempt(s)`。连续 120 秒没有端口时 relay 会打一条提示（上面 code 43 那段），同一条警告不会每 5 秒刷一次。
 - 关机流程里 `/mnt/c` 已卸载，`relay_stop` 会报 `powershell.exe: not found`——属瞬态，重启后 gateway 会重新拉起。
 - 设备上电可能自己安装暂存固件并再重启一轮，收尾前确认暂存的就是想要的镜像。
 
