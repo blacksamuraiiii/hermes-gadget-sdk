@@ -1026,6 +1026,7 @@ void App::start_listening(bool hands_free) {
     return;
   }
   hands_free_ = hands_free;
+  listen_chunks_ = 0;
   mic_stream_ = static_cast<uint8_t>(mic_stream_ % 250 + 1);
   mic_seq_ = 0;
   mic_unsent_ = 0;
@@ -1051,6 +1052,9 @@ void App::start_listening(bool hands_free) {
 }
 
 void App::finish_listening() {
+  if (listen_chunks_ == 0)
+    log(LogLevel::Warn, "recording: end with no audio at all after " +
+                            std::to_string(now() - mode_since_) + " ms");
   if (hal_.mic) hal_.mic->stop();
   json::Value end = proto::message("audio.end");
   end.set("id", request_id_).set("stream", mic_stream_).set("duration_ms", now() - mode_since_);
@@ -1116,6 +1120,12 @@ void App::on_mic_samples(const int16_t* samples, size_t count) {
   }
   if (mode_ != Mode::Listening || count == 0) return;
   level_ = level_percent(rms(samples, count));
+  // TEMPORARY (bring-up): a turn opened by the wake word recorded nothing, so count what
+  // arrives and how loud it is. Drop once the hand-over is proven.
+  if (++listen_chunks_ % 50 == 0 && level_ == 0) {
+    log(LogLevel::Warn, "recording: still silent after " + std::to_string(listen_chunks_) +
+                            " chunks, the microphone is not delivering");
+  }
   size_t off = 0;
   while (off < count) {
     size_t n = std::min(kMicChunkSamples, count - off);

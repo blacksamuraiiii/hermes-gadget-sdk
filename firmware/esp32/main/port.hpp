@@ -510,6 +510,8 @@ class CodecMic final : public hg::AudioIn {
   bool rmnm_ = false;
   int16_t* raw_ = nullptr;
   std::atomic<bool> capturing_{false};
+  uint32_t dbg_chunks_ = 0;
+  uint32_t dbg_fails_ = 0;  // TEMPORARY bring-up counter, see port_codec.cpp
 };
 
 class CodecSpeaker final : public hg::AudioOut {

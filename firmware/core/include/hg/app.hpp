@@ -368,6 +368,7 @@ class App {
   // A hit told the host to play the acknowledgement; the turn opens when that cue has played
   // (or after kWakeCueWaitMs if the host stays quiet).
   bool wake_awaiting_cue_ = false;
+  uint32_t listen_chunks_ = 0;  // diagnostic: how much of a recording actually arrived
   uint32_t wake_cue_at_ = 0;   // when a command word last opened a turn
   uint8_t mic_stream_ = 0;
   uint32_t mic_unsent_ = 0;  // frames of this recording the transport refused

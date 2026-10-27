@@ -181,6 +181,7 @@ bool CodecMic::begin(esp_codec_dev_handle_t dev, bool rmnm, const CodecAudio::Mi
 
 bool CodecMic::start(uint32_t sample_rate) {
   if (!dev_) return false;
+  ESP_LOGI(TAG, "mic: start asked for %u Hz", static_cast<unsigned>(sample_rate));
   if (sample_rate != CodecAudio::kRate) {
     ESP_LOGW(TAG, "microphone runs at %u Hz only", static_cast<unsigned>(CodecAudio::kRate));
     return false;
@@ -217,11 +218,25 @@ void CodecMic::task(void* arg) {
     bool read(int16_t* chunk) {
       void* data = mic->rmnm_ ? static_cast<void*>(mic->raw_) : static_cast<void*>(chunk);
       const size_t bytes = mic->rmnm_ ? kMicChunk * 4 * sizeof(int16_t) : kMicChunk * sizeof(int16_t);
-      if (esp_codec_dev_read(mic->dev_, data, bytes) != ESP_CODEC_DEV_OK) return false;
+      if (esp_codec_dev_read(mic->dev_, data, bytes) != ESP_CODEC_DEV_OK) {
+        if (++mic->dbg_fails_ % 50 == 1)
+          ESP_LOGW(TAG, "mic read failed (%u so far)", static_cast<unsigned>(mic->dbg_fails_));
+        return false;
+      }
       if (mic->rmnm_) hg::ws185_mono(mic->raw_, chunk, kMicChunk);
       return true;
     }
     void deliver(const int16_t* chunk) {
+      // TEMPORARY (bring-up): the ADC hands back zeros for the first seconds of a turn opened by
+      // the wake word, so show what the read side really returns. Drop once this is settled.
+      if (++mic->dbg_chunks_ % 100 == 0) {
+        int peak = 0;
+        for (size_t i = 0; i < kMicChunk; ++i) {
+          const int v = chunk[i] < 0 ? -chunk[i] : chunk[i];
+          if (v > peak) peak = v;
+        }
+        ESP_LOGI(TAG, "mic: peak %d, capturing %d", peak, static_cast<int>(mic->capturing_.load()));
+      }
       if (MicTap tap = mic_tap()) tap(chunk, kMicChunk);  // the wake engine, when it holds the mic
       events::post(EventType::Mic, chunk, kMicChunk * sizeof(int16_t));
     }

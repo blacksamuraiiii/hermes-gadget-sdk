@@ -164,7 +164,11 @@ void wake_pause() {
   if (!hgp::g_running.exchange(false)) return;
   ESP_LOGI(hgp::TAG, "pause: tap off");
   hgp::set_mic_tap(nullptr);  // no more samples reach the engine from here on
-  if (hgp::g_mic) hgp::g_mic->stop();
+  // The microphone is deliberately left running. Measured on the moji board: closing the
+  // ES8311 ADC here and re-opening it in start_listening(), right after the speaker played the
+  // acknowledgement cue, hands the turn nothing but zeros for as long as it lasts ("recording:
+  // still silent after 400 chunks"). Whoever paused the engine - a turn, or the cue before it -
+  // owns the microphone from here on and closes it itself.
   // Forget what it heard before the pause: the user has been talking into the recording, and
   // those frames never reached the engine anyway.
   if (hgp::g_afe && hgp::g_afe_data) hgp::g_afe->reset_buffer(hgp::g_afe_data);
