@@ -364,7 +364,11 @@ class App {
   uint32_t mode_since_ = 0;
   bool hands_free_ = false;
   bool wake_running_ = false;  // the wake engine holds the microphone right now
-  uint32_t wake_hit_at_ = 0;   // when a command word last opened a turn
+  uint32_t wake_hit_at_ = 0;
+  // A hit told the host to play the acknowledgement; the turn opens when that cue has played
+  // (or after kWakeCueWaitMs if the host stays quiet).
+  bool wake_awaiting_cue_ = false;
+  uint32_t wake_cue_at_ = 0;   // when a command word last opened a turn
   uint8_t mic_stream_ = 0;
   uint32_t mic_unsent_ = 0;  // frames of this recording the transport refused
   uint16_t mic_seq_ = 0;

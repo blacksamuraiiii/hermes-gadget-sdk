@@ -793,6 +793,25 @@ class DeviceHub:
         if text:
             session.spawn(self.delegate.on_text(session, str(msg.get("id") or ""), text[:4000]))
 
+    async def _h_wake_hit(self, session: DeviceSession, msg: dict) -> None:
+        """A command word fired on the device: answer with the acknowledgement cue.
+
+        The device waits for this cue before it starts recording, so the reply is plain audio
+        and nothing else: no card, no turn, no text-to-speech.
+        """
+        try:
+            log.info("[%s] wake word %s at %s percent", session.device_id, msg.get("command"),
+                     msg.get("score"))
+        except Exception:  # logging must never drop the cue
+            pass
+        cue = getattr(self.delegate, "play_cue", None)
+        if cue is None:
+            return
+        try:
+            await cue("wake")
+        except Exception as exc:  # a missing cue file must not take the link down
+            log.debug("[%s] wake cue failed: %s", session.device_id, exc)
+
     async def _h_audio_start(self, session: DeviceSession, msg: dict) -> None:
         fmt = msg.get("format", "pcm16")
         if fmt != "pcm16":
@@ -905,6 +924,7 @@ class DeviceHub:
         "audio.start": _h_audio_start,
         "audio.end": _h_audio_end,
         "audio.cancel": _h_audio_cancel,
+        "wake.hit": _h_wake_hit,
         "cancel": _h_cancel,
         "session.new": _h_session_new,
         "prompt.reply": _h_prompt_reply,

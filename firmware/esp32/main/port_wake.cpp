@@ -19,6 +19,7 @@
 #include "esp_log.h"
 #include "esp_mn_iface.h"
 #include "esp_mn_models.h"
+#include "esp_process_sdkconfig.h"  // esp_mn_commands_update_from_sdkconfig: the Kconfig words
 #include "model_path.h"
 
 namespace hgp {
@@ -43,6 +44,13 @@ esp_ae_rate_cvt_handle_t g_cvt = nullptr;
 StreamBufferHandle_t g_queue = nullptr;
 int g_feed_chunk = 0;  // samples per AFE feed call, at kAfeRate
 std::atomic<bool> g_ready{false};
+// Diagnostics for the first bring-up: counts on the tap side and on the AFE side.
+uint32_t g_tap_calls = 0;
+uint32_t g_tap_samples = 0;
+uint32_t g_feeds = 0;
+int g_feed_errors = 0;
+int g_tap_peak = 0;
+int g_frames_seen = 0;
 std::atomic<bool> g_running{false};
 
 // The tap runs on the microphone task, so both buffers live here rather than on its stack.
@@ -62,7 +70,23 @@ void on_mic(const int16_t* samples, size_t count) {
                               reinterpret_cast<esp_ae_sample_t>(g_tap_out), &produced) != ESP_AE_ERR_OK) {
     return;
   }
-  if (produced) xStreamBufferSend(g_queue, g_tap_out, produced * sizeof(int16_t), 0);
+  size_t sent = 0;
+  if (produced) sent = xStreamBufferSend(g_queue, g_tap_out, produced * sizeof(int16_t), 0);
+  int peak = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int v = samples[i] < 0 ? -samples[i] : samples[i];
+    if (v > peak) peak = v;
+  }
+  if (peak > g_tap_peak) g_tap_peak = peak;
+  ++g_tap_calls;
+  g_tap_samples += static_cast<uint32_t>(count);
+  if (g_tap_calls <= 3 || g_tap_calls % 200 == 0) {
+    ESP_LOGI(TAG, "tap: %u calls, %u samples in, %u out, sent %zu B, peak %d, queue free %u B",
+             static_cast<unsigned>(g_tap_calls), static_cast<unsigned>(g_tap_samples),
+             static_cast<unsigned>(produced), sent, static_cast<int>(g_tap_peak),
+             static_cast<unsigned>(xStreamBufferSpacesAvailable(g_queue)));
+    g_tap_peak = 0;
+  }
 }
 
 void report_hit() {
@@ -77,18 +101,41 @@ void report_hit() {
 }
 
 void task(void*) {
+  ESP_LOGI(TAG, "task: started, feed chunk %d samples (%u B)", g_feed_chunk,
+           static_cast<unsigned>(g_feed_chunk * 2));
+  const size_t want = static_cast<size_t>(g_feed_chunk) * sizeof(int16_t);
+  size_t filled = 0;  // a stream buffer hands back whatever is queued, so frames are assembled here
   for (;;) {
     if (!g_running.load()) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
-    const size_t want = static_cast<size_t>(g_feed_chunk) * sizeof(int16_t);
-    if (xStreamBufferReceive(g_queue, g_feed, want, pdMS_TO_TICKS(100)) < want) continue;
-    if (g_afe->feed(g_afe_data, g_feed) < 0) continue;
+    const size_t got = xStreamBufferReceive(g_queue, reinterpret_cast<uint8_t*>(g_feed) + filled,
+                                            want - filled, pdMS_TO_TICKS(100));
+    if (!got) continue;
+    filled += got;
+    if (filled < want) continue;  // keep the partial frame for the next round
+    filled = 0;
+
+    const int fed = g_afe->feed(g_afe_data, g_feed);
+    if (fed < 0) {
+      if (g_feed_errors < 5) {
+        ESP_LOGE(TAG, "feed failed: %d (frame %d samples)", fed, g_feed_chunk);
+        ++g_feed_errors;
+      }
+      continue;
+    }
+    if (++g_feeds % 200 == 0) {
+      ESP_LOGI(TAG, "feeds %u", static_cast<unsigned>(g_feeds));
+    }
     // One fetch per feed: the frame just queued is what comes back, and a pause does not have
     // to wait out a blocking fetch in the AFE.
     afe_fetch_result_t* fetched = g_afe->fetch_with_delay(g_afe_data, pdMS_TO_TICKS(50));
     if (!fetched || fetched->ret_value == ESP_FAIL || !fetched->data || fetched->data_size <= 0) continue;
+    if (g_frames_seen < 2) {
+      ESP_LOGI(TAG, "afe frame: %d samples", fetched->data_size / 2);
+      ++g_frames_seen;
+    }
     const esp_mn_state_t state = g_mn->detect(g_mn_data, fetched->data);
     if (state == ESP_MN_STATE_DETECTED) {
       report_hit();
@@ -101,40 +148,54 @@ void task(void*) {
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-// The seam core links weakly (firmware/core/src/wake.cpp)
+}  // namespace hgp
 
-bool wake_available() { return g_ready.load(); }
+// ---------------------------------------------------------------------------
+// The seam core links weakly (firmware/core/src/wake.cpp).
+// These four MUST be in namespace hg, the one the core calls: hgp is a separate namespace,
+// so defining them there leaves the weak stubs in core in force and the engine is never
+// resumed - the board looks healthy and never hears anything.
+
+namespace hg {
+
+bool wake_available() { return hgp::g_ready.load(); }
 
 void wake_pause() {
-  if (!g_running.exchange(false)) return;
-  set_mic_tap(nullptr);  // no more samples reach the engine from here on
-  if (g_mic) g_mic->stop();
+  if (!hgp::g_running.exchange(false)) return;
+  ESP_LOGI(hgp::TAG, "pause: tap off");
+  hgp::set_mic_tap(nullptr);  // no more samples reach the engine from here on
+  if (hgp::g_mic) hgp::g_mic->stop();
   // Forget what it heard before the pause: the user has been talking into the recording, and
   // those frames never reached the engine anyway.
-  if (g_afe && g_afe_data) g_afe->reset_buffer(g_afe_data);
-  if (g_mn && g_mn_data) g_mn->clean(g_mn_data);
+  if (hgp::g_afe && hgp::g_afe_data) hgp::g_afe->reset_buffer(hgp::g_afe_data);
+  if (hgp::g_mn && hgp::g_mn_data) hgp::g_mn->clean(hgp::g_mn_data);
 }
 
 void wake_resume() {
-  if (!g_ready.load() || g_running.load()) return;
-  if (g_mn && g_mn_data) g_mn->clean(g_mn_data);
-  if (g_cvt) esp_ae_rate_cvt_reset(g_cvt);
-  if (g_queue) xStreamBufferReset(g_queue);
-  if (g_mic && !g_mic->start(kCodecRate)) {
-    ESP_LOGE(TAG, "wake word: the microphone did not start, detection stays off");
-    return;
+  if (!hgp::g_ready.load() || hgp::g_running.load()) return;
+  if (hgp::g_mn && hgp::g_mn_data) hgp::g_mn->clean(hgp::g_mn_data);
+  if (hgp::g_cvt) esp_ae_rate_cvt_reset(hgp::g_cvt);
+  if (hgp::g_queue) xStreamBufferReset(hgp::g_queue);
+  if (hgp::g_mic) {
+    const bool started = hgp::g_mic->start(hgp::kCodecRate);
+    ESP_LOGI(hgp::TAG, "resume: microphone %s", started ? "started" : "did NOT start");
+    if (!started) return;
   }
-  g_running = true;
-  set_mic_tap(on_mic);  // the tap goes last: samples only flow once everything above is set
+  hgp::g_running = true;
+  hgp::set_mic_tap(hgp::on_mic);  // the tap goes last: samples flow once everything is set
+  ESP_LOGI(hgp::TAG, "resume: tap on");
 }
 
 void wake_feed(const int16_t*, size_t) {
   // Unused on this port: the engine taps the microphone itself (see on_mic).
 }
 
+}  // namespace hg
+
 // ---------------------------------------------------------------------------
 // Startup
+
+namespace hgp {
 
 void wake_attach(hg::AudioIn* mic) {
   g_mic = mic;
@@ -177,7 +238,18 @@ void wake_attach(hg::AudioIn* mic) {
   // Lower Kconfig value = more sensitive, which is the same direction as the model's probability
   // threshold. The words themselves come from esp-sr's CN_SPEECH_COMMAND_ID0/1 (set by the
   // board's sdkconfig.defaults), so changing a wake word needs no code change.
-  const float threshold = static_cast<float>(CONFIG_HG_WAKE_THRESHOLD) / 100.0f;
+  // Nothing registers the sdkconfig command words on its own: without this call MultiNet has
+  // zero phrases and never reports a detection, whatever the audio sounds like.
+  esp_mn_error_t* rejected = esp_mn_commands_update_from_sdkconfig(g_mn, g_mn_data);
+  if (rejected && rejected->num > 0) {
+    ESP_LOGW(TAG, "wake word: %d command(s) rejected by the model", rejected->num);
+  }
+  ESP_LOGI(TAG, "wake word: %d samples per MultiNet frame", g_mn->get_samp_chunksize(g_mn_data));
+
+  // TEMPORARY (bring-up): 0.05 instead of CONFIG_HG_WAKE_THRESHOLD/100, so the console shows
+  // the score of every command word instead of only the ones over the shipped threshold.
+  // Restore the Kconfig mapping once the distribution is measured.
+  const float threshold = 0.05f;
   g_mn->set_det_threshold(g_mn_data, threshold);
 
   esp_ae_rate_cvt_cfg_t cvt = {};

@@ -3207,6 +3207,11 @@ TEST("wake: a command word opens a hands-free turn and logs its score") {
   r.bring_online(true);
   r.advance(200);
   r.app.on_wake_hit(1, 0.62f);
+  // The host is asked for the cue and the recording waits for it.
+  CHECK(r.fake.last("wake.hit") != nullptr);
+  CHECK(r.app.screen() != hg::Screen::Listening);
+  CHECK(!r.fake.mic_on);
+  r.advance(750);
   CHECK(r.app.screen() == hg::Screen::Listening);
   CHECK(r.fake.mic_on);
   const Value* start = r.fake.last("audio.start");
@@ -3235,6 +3240,7 @@ TEST("wake: the same command word firing again does not restart the recording") 
   r.bring_online(true);
   r.advance(200);
   r.app.on_wake_hit(0, 0.70f);
+  r.advance(750);  // past the cue wait: this is when the recording actually starts
   CHECK(r.app.screen() == hg::Screen::Listening);
   int streams = 0;
   for (const auto& m : r.fake.sent) streams += m["type"].as_string() == "audio.start" ? 1 : 0;

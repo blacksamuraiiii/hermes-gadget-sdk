@@ -28,6 +28,10 @@ constexpr uint32_t kRespondingTimeoutMs = 45000;
 // A command word that keeps firing while the user is still talking must not restart the
 // recording: one hit opens one turn.
 constexpr uint32_t kWakeHitThrottleMs = 2000;
+// The host plays the "我在" cue after a hit (same cue path as reminders). Recording while it
+// plays would capture the cue itself on a single-microphone board, so the turn waits: this long
+// at most when the host sends nothing.
+constexpr uint32_t kWakeCueWaitMs = 700;
 constexpr uint32_t kSettleAfterReplyMs = 6000;
 constexpr uint32_t kReplyLingerMs = 20000;    // reply text stays up this long before the mascot returns
 constexpr uint32_t kNewSessionHoldMs = 2000;  // hold CANCEL this long to start a new session
@@ -997,11 +1001,15 @@ void App::on_wake_hit(int command_id, float score) {
   if (wake_hit_at_ && t - wake_hit_at_ < kWakeHitThrottleMs) return;  // the same word, still firing
   if (!can_talk() || settings_open() || prompt_showing() || mode_ != Mode::Idle) return;
   wake_hit_at_ = t;
-  // Pilot (2026-10-27): a hit opens the turn hands-free. Whether the shipped build does this
-  // or only wakes the screen waits on the threshold data; the seam above does not change.
+  // Tell the host which word fired and how sure the model was; it answers with the cue.
+  json::Value msg = json::Value::object();
+  msg.set("type", "wake.hit").set("command", command_id).set("score", static_cast<int>(score * 100.0f + 0.5f));
+  send(msg);
+  // Pilot (2026-10-27): a hit opens the turn hands-free, once the cue has played.
+  wake_awaiting_cue_ = true;
+  wake_cue_at_ = t;
   wake_display();
-  start_listening(true);
-  update_model();  // the screen is Listening now, not after the next tick
+  update_model();  // the screen lights up now, the recording waits for the cue
 }
 
 void App::start_listening(bool hands_free) {
@@ -1564,6 +1572,13 @@ void App::tick() {
   if (static_cast<int32_t>(t - page_at_) >= 0) {
     page_at_ = t + page_dwell_ms();
     if (turn_page()) update_model();
+  }
+
+  // A hit waits for the host's cue before it records (on_wake_hit); the screen is already lit.
+  if (wake_awaiting_cue_ && t - wake_cue_at_ >= kWakeCueWaitMs && !speaking()) {
+    wake_awaiting_cue_ = false;
+    start_listening(true);
+    update_model();
   }
 
   // Every mode change above has settled by now, so one place decides who holds the

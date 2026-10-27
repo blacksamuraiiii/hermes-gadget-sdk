@@ -30,6 +30,9 @@ CUES = {
     "approval": "需要你授权，请回到电脑上确认",
     "clarify": "需要你做一个选择",
     "done": "任务已完成",
+    # The wake-word acknowledgement: said the moment a command word fires, before the device
+    # starts recording. Short on purpose - it delays the recording by its own length.
+    "wake": "我在",
 }
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"

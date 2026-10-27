@@ -904,6 +904,29 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
                 await session.show_card(head, text, ttl_s=ttl_s)
         return True
 
+    async def play_cue(self, cue: str) -> bool:
+        """Play one pre-cut cue on the gadget, with no card and no turn.
+
+        Used for the wake-word acknowledgement ("我在", cut by tools/make_cues.py): the device
+        says which word fired, this plays the file, and the device starts recording only after
+        the cue is over. Same files and same cache as the reminder cues.
+        """
+        if self._hub is None:
+            return False
+        targets = [s for s in self._hub.sessions.values() if s.paired and not s.closed]
+        if self.config.home_channel:
+            home = [s for s in targets if s.device_id == self.config.home_channel]
+            targets = home or targets
+        played = False
+        for session in targets:
+            if not session.has_speaker:
+                continue
+            pcm = await self._cue_pcm(cue, session.speaker_rate)
+            if pcm:
+                await session.play_pcm(pcm, session.speaker_rate)
+                played = True
+        return played
+
     async def play_tts(self, chat_id: str, audio_path: str, **kwargs) -> SendResult:
         return await self._play_file(chat_id, audio_path)
 
