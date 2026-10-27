@@ -756,6 +756,12 @@ BoardConfig make() {
   b.codec.din = 13;
   b.codec.pa = 9;
   b.codec.mic = MicCodec::Es8311;  // AP2718AT analog mic on the ES8311 ADC
+  // Measured on this board: ambient peak 50-90, speech peak up to 841, i.e. an RMS well under
+  // 100 at the default gain. Tap mode's 500 floor therefore never counted a word as speech and
+  // every turn closed as "no speech" (the screen dropped back to idle mid-sentence). 30 dB puts
+  // the microphone at the level the Kconfig gain assumes; 150 sits above this room's noise.
+  b.codec.mic_gain_db = 30.0f;
+  b.codec.vad_min_rms = 150.0f;
   b.buttons = {0, -1, -1, -1};  // BOOT only: talk, no cancel or scroll
   b.status_led = 21;
   b.talk_label = "BOOT";
