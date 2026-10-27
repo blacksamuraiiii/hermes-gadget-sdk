@@ -20,6 +20,11 @@ constexpr uint32_t kStableSessionMs = 30000;
 constexpr uint32_t kMinUtteranceMs = 350;
 constexpr uint32_t kMaxUtteranceMs = 30000;
 constexpr uint32_t kThinkingTimeoutMs = 180000;
+// A turn that reached Responding and then went quiet is a broken link, not a slow agent: the
+// reply has already started, so nothing more is coming and the screen would keep the reply for
+// ever, where no card or reminder shows. 45 s is long enough to cover a stream that stalls on
+// one more sentence, and short enough that a reminder is not blocked for three minutes.
+constexpr uint32_t kRespondingTimeoutMs = 45000;
 constexpr uint32_t kSettleAfterReplyMs = 6000;
 constexpr uint32_t kReplyLingerMs = 20000;    // reply text stays up this long before the mascot returns
 constexpr uint32_t kNewSessionHoldMs = 2000;  // hold CANCEL this long to start a new session
@@ -1486,7 +1491,7 @@ void App::tick() {
   }
   // A turn that started and then went quiet (link dropped mid-reply, no turn.end) would
   // otherwise keep the screen in Responding for ever, where no card or reminder shows.
-  if (mode_ == Mode::Responding && !speaking() && t - last_turn_rx_ > kThinkingTimeoutMs) {
+  if (mode_ == Mode::Responding && !speaking() && t - last_turn_rx_ > kRespondingTimeoutMs) {
     mode_ = Mode::Idle;
     mode_since_ = t;
     notice_ = tr(i18n::Msg::NoReplyFromHermes);

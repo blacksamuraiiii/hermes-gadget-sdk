@@ -3182,3 +3182,19 @@ TEST("wake: a turn keeps the engine quiet until the reply has finished playing")
   r.advance(200);
   CHECK(g_wake.running);  // back in Idle: the engine listens again
 }
+
+// The 45 s limit only covers a turn that already answered and then went quiet; a turn that
+// never answered keeps the 180 s Thinking limit, because a slow agent is not a broken link.
+TEST("wake: a quiet turn leaves Responding after 45 s, not after three minutes") {
+  Rig r;
+  r.bring_online(true);
+  r.server(R"({"type":"turn.start","turn":"t"})");
+  // A delta, not a final reply: a finished reply settles on its own after 6 s, so only a
+  // stream that stopped mid-answer reaches the 45 s limit.
+  r.server(R"({"type":"reply.delta","turn":"t","text":"half an"})");
+  CHECK(r.app.screen() == hg::Screen::Responding);
+  r.advance(40000);
+  CHECK(r.app.screen() == hg::Screen::Responding);  // a stalled stream is not a dead one yet
+  r.advance(6000);
+  CHECK(r.app.screen() == hg::Screen::Ready);
+}
