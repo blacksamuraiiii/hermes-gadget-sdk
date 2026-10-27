@@ -14,10 +14,32 @@ if(IDF_TARGET STREQUAL "esp32p4")
         "../../drivers/stc8_battery.cpp")
     list(APPEND HG_P4_REQUIRES esp_lcd_ek79007)
 endif()
+set(HG_WAKE_SOURCES)
+set(HG_WAKE_REQUIRES)
+# The wake word is a build option that promises a detector in the image. Until
+# port_wake.cpp (the AFE + MultiNet engine) and the esp-sr component it needs are in the
+# tree, turning the option on still builds - and ships a firmware whose wake word never
+# fires, with no error anywhere to say why. Fail the build instead, so a promise with no
+# engine behind it cannot reach a device. Clear the guard only by doing all three:
+# port_wake.cpp landed, esp-sr required here, and CONFIG_HG_WAKE_MULTINET=y in the
+# build's sdkconfig.
+if(CONFIG_HG_WAKE_MULTINET)
+    if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/port_wake.cpp")
+        message(FATAL_ERROR
+            "HG_WAKE_MULTINET=y, but main/port_wake.cpp does not exist: nothing would run the "
+            "detector and the device would silently never wake. Either turn the option off or "
+            "add the engine (main/port_wake.cpp plus the espressif/esp-sr dependency in "
+            "idf_component.yml).")
+    endif()
+    list(APPEND HG_WAKE_SOURCES "port_wake.cpp")
+    list(APPEND HG_WAKE_REQUIRES esp-sr)
+endif()
+
 idf_component_register(
     SRCS
         "main.cpp"
         "board.cpp"
+        ${HG_WAKE_SOURCES}
         "port_amoled.cpp"
         "port_audio.cpp"
         ${HG_P4_SOURCES}
@@ -63,6 +85,7 @@ idf_component_register(
         esp_lcd_st7701
         esp_lcd_panel_io_additions
         ${HG_P4_REQUIRES}
+        ${HG_WAKE_REQUIRES}
         esp_netif
         esp_http_server
         esp_psram
