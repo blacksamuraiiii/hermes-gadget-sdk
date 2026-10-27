@@ -280,7 +280,13 @@ class Relay:
         path = self.hello.get("path") or self.args.path
         sub = self.hello.get("sub") or SUB_DEFAULT
         url = self.args.target.rstrip("/") + path
-        for attempt in range(3):
+        # A gateway restart takes the plugin off 8765 for half a minute or more, and the board
+        # cannot retry on its own: giving up after 6 s left it offline until someone replugged
+        # the USB cable. Keep trying across a whole restart.
+        deadline = time.monotonic() + 75
+        attempt = 0
+        while time.monotonic() < deadline:
+            attempt += 1
             try:
                 self.ws = await connect(
                     url, subprotocols=[sub],  # type: ignore[arg-type]  # websockets types this as Subprotocol
@@ -290,8 +296,8 @@ class Relay:
                 await self.write_frame(T_HELLO_ACK, b'{"ok":1}')
                 return True
             except Exception as exc:  # noqa: BLE001 - any failure means retry
-                LOG.warning("ws %s failed (%d/3): %s", url, attempt + 1, exc)
-                await asyncio.sleep(2)
+                LOG.warning("ws %s failed (%d): %s", url, attempt, exc)
+                await asyncio.sleep(min(2 * attempt, 5))
         await self.write_frame(T_HELLO_ACK, b'{"ok":0,"err":"no plugin"}')
         LOG.error("the plugin is not reachable at %s; is the gadget platform running?", url)
         return False
