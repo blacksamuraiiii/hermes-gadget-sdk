@@ -20,6 +20,9 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 # CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_HG_BOARD_MOVECALL_MOJI=y
+# The wake-word models need a partition of their own, and only this 16 MB board can spare
+# the room: the generic partitions.csv stays inside 4 MB for the other boards.
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-moji.csv"
 
 # The point of this board is the Chinese reminder screen, so it carries the 12 px
 # CJK table (6x12 ASCII + 12x12 CJK) and reports charset=utf-8. Other boards keep

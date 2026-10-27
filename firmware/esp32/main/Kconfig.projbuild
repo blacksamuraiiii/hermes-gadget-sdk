@@ -250,8 +250,10 @@ menu "Hermes Gadget"
             Runs a MultiNet command-word detector on the microphone while the
             device is idle, so the user can start a turn by speaking instead of
             holding BOOT. Commands are plain pinyin strings, so the wake words are
-            build options rather than trained models. Needs the `model` partition
-            in partitions.csv, which `idf.py flash` writes and `app-flash` does not.
+            build options rather than trained models. Needs the `model` partition in the
+            board's own partition table (boards/movecall-moji-esp32s3 uses
+            partitions-moji.csv; the generic partitions.csv has no room), which
+            `idf.py flash` writes and `app-flash` does not.
 
     config HG_WAKE_THRESHOLD
         int "Wake word detection threshold (1-99, lower is more sensitive)"
