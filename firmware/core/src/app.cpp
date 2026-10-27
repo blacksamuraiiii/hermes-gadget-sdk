@@ -25,6 +25,9 @@ constexpr uint32_t kThinkingTimeoutMs = 180000;
 // ever, where no card or reminder shows. 45 s is long enough to cover a stream that stalls on
 // one more sentence, and short enough that a reminder is not blocked for three minutes.
 constexpr uint32_t kRespondingTimeoutMs = 45000;
+// A command word that keeps firing while the user is still talking must not restart the
+// recording: one hit opens one turn.
+constexpr uint32_t kWakeHitThrottleMs = 2000;
 constexpr uint32_t kSettleAfterReplyMs = 6000;
 constexpr uint32_t kReplyLingerMs = 20000;    // reply text stays up this long before the mascot returns
 constexpr uint32_t kNewSessionHoldMs = 2000;  // hold CANCEL this long to start a new session
@@ -983,6 +986,22 @@ void App::update_wake() {
     hg::wake_resume();
   else
     hg::wake_pause();
+}
+
+// A command word fired. The log line comes first and unconditionally: the threshold scan needs
+// the score and which word fired, so even a hit that opened nothing is on record.
+void App::on_wake_hit(int command_id, float score) {
+  log(LogLevel::Info, "wake: command " + std::to_string(command_id) + " at " +
+                          std::to_string(static_cast<int>(score * 100.0f + 0.5f)) + " percent");
+  const uint32_t t = now();
+  if (wake_hit_at_ && t - wake_hit_at_ < kWakeHitThrottleMs) return;  // the same word, still firing
+  if (!can_talk() || settings_open() || prompt_showing() || mode_ != Mode::Idle) return;
+  wake_hit_at_ = t;
+  // Pilot (2026-10-27): a hit opens the turn hands-free. Whether the shipped build does this
+  // or only wakes the screen waits on the threshold data; the seam above does not change.
+  wake_display();
+  start_listening(true);
+  update_model();  // the screen is Listening now, not after the next tick
 }
 
 void App::start_listening(bool hands_free) {

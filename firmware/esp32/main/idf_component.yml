@@ -36,3 +36,18 @@ dependencies:
     version: "2.0.2"
     rules:
       - if: target in [esp32p4]
+  # Chinese MultiNet command words for the wake word. esp-sr runs on the S3's PIE
+  # instructions, so only ESP32-S3 targets pull it (the archive is ~175 MB); P4 boards
+  # never see it. The engine that uses it (main/port_wake.cpp) is compiled only when
+  # CONFIG_HG_WAKE_MULTINET is on, and the models live in the board's `model` partition.
+  espressif/esp-sr:
+    version: "^2.6.0"
+    rules:
+      - if: target in [esp32s3]
+  # Resampler for the wake word: the codec's ADC and DAC share one I2S clock at 24 kHz and
+  # AFE/MultiNet want 16 kHz, so the engine converts with the official rate_cvt rather than
+  # a hand-written decimator. Same gating as esp-sr: S3 targets only.
+  espressif/esp_audio_effects:
+    version: "^1.4"
+    rules:
+      - if: target in [esp32s3]

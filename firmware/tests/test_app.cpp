@@ -3198,3 +3198,49 @@ TEST("wake: a quiet turn leaves Responding after 45 s, not after three minutes")
   r.advance(6000);
   CHECK(r.app.screen() == hg::Screen::Ready);
 }
+
+// The device-side detector reports a hit with its score and command id. The score is logged
+// for every hit (the threshold scan reads it), and a hit that lands in an idle, connected
+// device opens a hands-free turn.
+TEST("wake: a command word opens a hands-free turn and logs its score") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_wake_hit(1, 0.62f);
+  CHECK(r.app.screen() == hg::Screen::Listening);
+  CHECK(r.fake.mic_on);
+  const Value* start = r.fake.last("audio.start");
+  CHECK(start != nullptr);
+  if (start) CHECK_EQ((*start)["mode"].as_string(), std::string("tap"));
+
+  bool logged = false;
+  for (const auto& line : r.fake.logs) logged |= line.find("wake: command 1 at 62 percent") != std::string::npos;
+  CHECK(logged);
+}
+
+TEST("wake: a hit while a turn runs or unpaired records the score and opens nothing") {
+  Rig r;
+  r.bring_online(false);  // not approved yet: talking is refused
+  r.advance(200);
+  r.app.on_wake_hit(0, 0.31f);
+  CHECK(r.app.screen() != hg::Screen::Listening);
+  CHECK(!r.fake.mic_on);
+  bool logged = false;
+  for (const auto& line : r.fake.logs) logged |= line.find("wake: command 0 at 31 percent") != std::string::npos;
+  CHECK(logged);
+}
+
+TEST("wake: the same command word firing again does not restart the recording") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_wake_hit(0, 0.70f);
+  CHECK(r.app.screen() == hg::Screen::Listening);
+  int streams = 0;
+  for (const auto& m : r.fake.sent) streams += m["type"].as_string() == "audio.start" ? 1 : 0;
+  CHECK_EQ(streams, 1);
+  r.app.on_wake_hit(0, 0.70f);  // still the same utterance
+  int again = 0;
+  for (const auto& m : r.fake.sent) again += m["type"].as_string() == "audio.start" ? 1 : 0;
+  CHECK_EQ(again, 1);
+}

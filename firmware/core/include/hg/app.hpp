@@ -109,6 +109,10 @@ class App {
   bool settings_title_hit(int x, int y) const;
   // Returns true when this input only wakes a sleeping display.
   bool wake_display();
+  // A command word fired on the device (port_wake.cpp): `command_id` is the registered
+  // command (0 or 1, HG_WAKE_CMD0/1) and `score` its match probability, which the threshold
+  // scan needs. Pilot behaviour (2026-10-27): the hit opens a hands-free turn.
+  void on_wake_hit(int command_id, float score);
   // A short press of the PMIC's power key: turns the screen off, or back on.
   // Wi-Fi and the Hermes connection stay up.
   void on_power_key();
@@ -360,6 +364,7 @@ class App {
   uint32_t mode_since_ = 0;
   bool hands_free_ = false;
   bool wake_running_ = false;  // the wake engine holds the microphone right now
+  uint32_t wake_hit_at_ = 0;   // when a command word last opened a turn
   uint8_t mic_stream_ = 0;
   uint32_t mic_unsent_ = 0;  // frames of this recording the transport refused
   uint16_t mic_seq_ = 0;
