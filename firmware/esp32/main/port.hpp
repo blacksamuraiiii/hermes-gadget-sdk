@@ -63,7 +63,26 @@ namespace hgp {
 // Events
 
 enum class EventType : uint8_t { NetUp, NetDown, WsOpen, WsText, WsBinary, WsClosed, Mic, Console, Touch, Key,
-                                 WifiStarted, WifiDisconnected, WifiProvision, WifiScanDone, Encoder, Phone };
+                                 WifiStarted, WifiDisconnected, WifiProvision, WifiScanDone, Encoder, Phone, WakeHit };
+
+// Payload of WakeHit events (posted by the wake-word task in port_wake.cpp).
+struct WakeHitSample {
+  int16_t command_id;
+  float score;  // probability the model gave the matched command word, 0.0-1.0
+};
+
+// The wake engine listens to the same microphone chunk the app gets instead of opening a
+// second microphone. One tap at a time; the engine sets it while it holds the mic.
+using MicTap = void (*)(const int16_t* samples, size_t count);
+void set_mic_tap(MicTap tap);
+// The tap in force, or nullptr. Read on every chunk, so a stop needs no synchronisation.
+MicTap mic_tap();
+
+#if CONFIG_HG_WAKE_MULTINET
+// Gives the engine the microphone the app records through (main.cpp, once at startup):
+// the engine starts and stops it, and takes samples from the tap above.
+void wake_attach(hg::AudioIn* mic);
+#endif
 
 // Payload of Phone events (posted by the Bluetooth host task).
 struct PhoneSample {

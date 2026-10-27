@@ -37,6 +37,13 @@ i2s_std_config_t std_config(uint32_t rate, i2s_data_bit_width_t bits, int bclk, 
 
 uint32_t speaker_now_ms() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 
+namespace {
+std::atomic<MicTap> mic_tap_slot{nullptr};
+}  // namespace
+
+void set_mic_tap(MicTap tap) { mic_tap_slot.store(tap); }
+MicTap mic_tap() { return mic_tap_slot.load(); }
+
 void log_underruns(const char* tag, const hg::SpeakerUnderruns::Totals& t) {
   ESP_LOGI(tag, "playback ended: %u underruns, %u ms in total, longest %u ms", static_cast<unsigned>(t.count),
            static_cast<unsigned>(t.total_ms), static_cast<unsigned>(t.longest_ms));
@@ -109,7 +116,10 @@ void I2sMic::task(void* arg) {
       for (size_t i = 0; i < n; ++i) {
         pcm[i] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, pcm[i] * 4)));
       }
-      if (self->capturing_) events::post(EventType::Mic, pcm, n * sizeof(int16_t));
+      if (self->capturing_) {
+        if (MicTap tap = mic_tap()) tap(pcm, n);  // the wake engine, when it holds the mic
+        events::post(EventType::Mic, pcm, n * sizeof(int16_t));
+      }
       continue;
     }
     int32_t raw[kMicChunk];
@@ -123,7 +133,10 @@ void I2sMic::task(void* arg) {
       int32_t s = raw[i] >> 13;
       pcm[i] = static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, s)));
     }
-    if (self->capturing_) events::post(EventType::Mic, pcm, n * sizeof(int16_t));
+    if (self->capturing_) {
+      if (MicTap tap = mic_tap()) tap(pcm, n);  // the wake engine, when it holds the mic
+      events::post(EventType::Mic, pcm, n * sizeof(int16_t));
+    }
   }
 }
 

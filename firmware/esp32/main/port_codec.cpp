@@ -221,7 +221,10 @@ void CodecMic::task(void* arg) {
       if (mic->rmnm_) hg::ws185_mono(mic->raw_, chunk, kMicChunk);
       return true;
     }
-    void deliver(const int16_t* chunk) { events::post(EventType::Mic, chunk, kMicChunk * sizeof(int16_t)); }
+    void deliver(const int16_t* chunk) {
+      if (MicTap tap = mic_tap()) tap(chunk, kMicChunk);  // the wake engine, when it holds the mic
+      events::post(EventType::Mic, chunk, kMicChunk * sizeof(int16_t));
+    }
     void wait() { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)); }
     void pause() { vTaskDelay(pdMS_TO_TICKS(10)); }
   } ops{self};

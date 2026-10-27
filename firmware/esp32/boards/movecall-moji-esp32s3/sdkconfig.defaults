@@ -34,6 +34,17 @@ CONFIG_HG_FONT_CJK=y
 # line out to return to the WebSocket-over-Wi-Fi transport (no code changes).
 CONFIG_HG_LINK_USB_SERIAL=y
 
+# Wake word (pilot, 2026-10-27): MultiNet5 Chinese command words run on the device, models
+# from the `model` partition in partitions-moji.csv. The first flash of this build must be a
+# full `idf.py flash` (four images + srmodels.bin): `app-flash` and OTA never write the model
+# partition. Turn the option off to fall back to the BOOT button alone.
+CONFIG_HG_WAKE_MULTINET=y
+CONFIG_SR_MN_CN_MULTINET5_RECOGNITION_QUANT8=y
+# The words the model listens for (pinyin, lower case, no tones). esp-sr registers these at
+# init from its own Kconfig, so keep them equal to HG_WAKE_CMD0/HG_WAKE_CMD1.
+CONFIG_CN_SPEECH_COMMAND_ID0="ni hao xiao mo"
+CONFIG_CN_SPEECH_COMMAND_ID1="xiao mo xiao mo"
+
 # The relay ignores the host and uses only the path, so this placeholder is
 # enough; it also survives an NVS erase (the Web Serial installer wipes it).
 CONFIG_HG_DEFAULT_SERVER_URL="ws://usb/gadget"

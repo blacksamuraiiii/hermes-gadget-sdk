@@ -6,11 +6,11 @@
 nvs,      data, nvs,     0x9000,   0x6000
 otadata,  data, ota,     0xf000,   0x2000
 phy_init, data, phy,     0x11000,  0x1000
-ota_0,    app,  ota_0,   0x20000,  0x1f0000
-ota_1,    app,  ota_1,   0x210000, 0x1f0000
+ota_0,    app,  ota_0,   0x20000,  0x3e0000
+ota_1,    app,  ota_1,   0x400000, 0x3e0000
 # esp-sr models (MultiNet wake word) live outside the app image, so the wake word does
 # not grow the app slot and an OTA update never touches them. `idf.py flash` writes this
 # partition, `app-flash` does not. 4 MB covers mn5q8_cn (2.1 MB) and mn6_cn (~3.5 MB);
-# everything from 0x800000 up stays unallocated. This table only belongs to a 16 MB board:
+# everything from 0xc00000 up stays unallocated. This table only belongs to a 16 MB board:
 # the generic partitions.csv stays inside 4 MB so the 4 MB boards still fit.
-model,    data, spiffs,  0x400000, 0x400000
+model,    data, spiffs,  0x800000, 0x400000
