@@ -215,6 +215,30 @@ struct Rig {
 
 }  // namespace
 
+// The wake engine lives in the port layer and the core links it weakly (hg/wake.cpp).
+// A strong definition here stands in for it and records who holds the microphone.
+namespace {
+struct WakeStandIn {
+  int pauses = 0;
+  int resumes = 0;
+  bool running = false;  // the last hand-over the app asked for
+};
+}  // namespace
+static WakeStandIn g_wake;
+
+namespace hg {
+bool wake_available() { return true; }
+void wake_pause() {
+  ++g_wake.pauses;
+  g_wake.running = false;
+}
+void wake_resume() {
+  ++g_wake.resumes;
+  g_wake.running = true;
+}
+void wake_feed(const int16_t*, size_t) {}
+}  // namespace hg
+
 TEST("app: connects after boot and sends a hello describing the device") {
   Rig r;
   r.app.begin();
@@ -3096,4 +3120,65 @@ TEST("app: a turn that goes quiet leaves Responding by itself") {
   CHECK(r.app.screen() == hg::Screen::Responding);
   r.advance(200000);  // past the 180 s no-news limit
   CHECK(r.app.screen() != hg::Screen::Responding);
+}
+
+// --- The wake seam: one owner of the microphone at a time ---------------------
+// A cancelled recording used to leave the engine stopped until the next one, and ending
+// a recording used to resume it while the device was still thinking or playing the reply,
+// so the engine heard the device's own voice. Both are visible here.
+
+TEST("wake: the engine holds the microphone while idle and hands it over to a recording") {
+  g_wake = WakeStandIn{};
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  CHECK(g_wake.running);  // idle: the engine is sampling the microphone
+
+  r.app.on_button(hg::Button::Talk, true);
+  CHECK(!g_wake.running);  // the recording owns it now
+  CHECK_EQ(g_wake.pauses, 1);
+
+  r.advance(500);
+  r.app.on_button(hg::Button::Talk, false);
+  CHECK(r.app.screen() == hg::Screen::Thinking);
+  r.advance(200);
+  CHECK(!g_wake.running);  // the recording ended, the turn still runs: stay quiet
+}
+
+TEST("wake: a cancelled recording gives the microphone back") {
+  g_wake = WakeStandIn{};
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_button(hg::Button::Talk, true);
+  CHECK(!g_wake.running);
+  r.app.on_button(hg::Button::Cancel, true);  // cancel while the talk button is held
+  r.app.on_button(hg::Button::Talk, false);
+  r.app.on_button(hg::Button::Cancel, false);
+  r.advance(200);
+  CHECK(r.app.screen() == hg::Screen::Ready);
+  CHECK(g_wake.running);  // the engine listens again instead of staying stopped
+}
+
+TEST("wake: a turn keeps the engine quiet until the reply has finished playing") {
+  g_wake = WakeStandIn{};
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_button(hg::Button::Talk, true);
+  r.advance(500);
+  r.app.on_button(hg::Button::Talk, false);
+
+  r.server(R"({"type":"turn.start","turn":"a1"})");
+  r.server(R"({"type":"audio.start","stream":5,"rate":16000,"format":"pcm16"})");
+  r.server(R"({"type":"reply","turn":"a1","text":"It is sunny."})");
+  r.server(R"({"type":"turn.end","turn":"a1","outcome":"success"})");
+  r.server(R"({"type":"audio.end","stream":5})");
+  r.fake.spk_draining = true;
+  r.advance(200);
+  CHECK(!g_wake.running);  // the last audio is still playing
+
+  r.fake.spk_draining = false;
+  r.advance(200);
+  CHECK(g_wake.running);  // back in Idle: the engine listens again
 }

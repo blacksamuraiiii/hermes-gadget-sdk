@@ -964,12 +964,31 @@ void App::on_button(Button button, bool pressed) {
   update_model();
 }
 
+// The wake engine owns the microphone whenever nothing else does: it must step back for
+// a recording, stay quiet while a turn thinks or answers and while the answer plays back,
+// and be listening again as soon as the device is idle. Deriving that from the state the
+// app already has covers every way back to Idle - a finished turn, a cancel, a timeout, a
+// dropped link - instead of resuming at each call site, which is how a cancelled recording
+// used to leave the engine stopped until the next one.
+void App::update_wake() {
+  const bool wants_mic = mode_ == Mode::Idle && !speaking() && hardware_check_ == HardwareCheck::None;
+  if (wants_mic == wake_running_) return;
+  wake_running_ = wants_mic;
+  if (wants_mic)
+    hg::wake_resume();
+  else
+    hg::wake_pause();
+}
+
 void App::start_listening(bool hands_free) {
   stop_playback();
   dismiss_overlay();
-  // The wake engine holds the microphone while the device is idle; hand it over
-  // before opening the talk session at the profile's own rate.
-  hg::wake_pause();
+  // Hand the microphone over before opening the talk session at the profile's own rate:
+  // update_wake() would do it on the next tick, too late for the samples in between.
+  if (wake_running_) {
+    wake_running_ = false;
+    hg::wake_pause();
+  }
   if (!hal_.mic || !hal_.mic->start(profile_.mic_rate)) {
     set_hint_flash(tr(i18n::Msg::MicUnavailable));
     return;
@@ -1001,7 +1020,6 @@ void App::start_listening(bool hands_free) {
 
 void App::finish_listening() {
   if (hal_.mic) hal_.mic->stop();
-  hg::wake_resume();
   json::Value end = proto::message("audio.end");
   end.set("id", request_id_).set("stream", mic_stream_).set("duration_ms", now() - mode_since_);
   if (mic_unsent_)
@@ -1524,6 +1542,9 @@ void App::tick() {
     if (turn_page()) update_model();
   }
 
+  // Every mode change above has settled by now, so one place decides who holds the
+  // microphone (app.cpp, update_wake).
+  update_wake();
   flush_sensors();
   flush_display_state();
   perf_tick();

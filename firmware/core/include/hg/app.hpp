@@ -275,6 +275,9 @@ class App {
   void log(LogLevel level, std::string_view msg);
   uint32_t now() const { return hal_.system->now_ms(); }
   bool speaking() const;
+  // Hands the microphone to the wake engine, or takes it back: the engine owns it
+  // whenever nothing else does (see update_wake in app.cpp).
+  void update_wake();
   std::string next_id(char prefix);
 
   Hal& hal_;
@@ -356,6 +359,7 @@ class App {
   Mode mode_ = Mode::Idle;
   uint32_t mode_since_ = 0;
   bool hands_free_ = false;
+  bool wake_running_ = false;  // the wake engine holds the microphone right now
   uint8_t mic_stream_ = 0;
   uint32_t mic_unsent_ = 0;  // frames of this recording the transport refused
   uint16_t mic_seq_ = 0;
