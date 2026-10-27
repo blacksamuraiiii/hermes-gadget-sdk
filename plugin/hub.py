@@ -29,10 +29,12 @@ HANDSHAKE_TIMEOUT_S = 10.0
 AUDIO_FRAME_MS = 40          # outbound audio frame duration
 PLAYBACK_LEAD_S = 0.5        # how far ahead of real time playback audio is sent
 IMAGE_CHUNK_BYTES = 4096
-MIN_UTTERANCE_S = 0.25
 MAX_FRAME_BYTES = 1 << 20
 MAX_PENDING_DEVICES = 16     # unapproved devices the store keeps, in total...
 MAX_PENDING_PER_ADDRESS = 4  # ...and from one network address
+# What the device shows when a capture held no speech. The moji board is a Chinese reminder
+# screen, so the text is Chinese; the threshold below is the adapter's, so both gates agree.
+NO_SPEECH_NOTICE = "没听清，请按住按键说话"
 
 
 class HubDelegate:
@@ -826,8 +828,8 @@ class DeviceHub:
         seconds = audio.duration_s(bytes(up.pcm), up.rate)
         if up.gaps:
             log.debug("[%s] utterance had %d sequence gaps", session.device_id, up.gaps)
-        if seconds < MIN_UTTERANCE_S:
-            await session.send_notice("Didn't catch that - hold the button while speaking")
+        if seconds < audio.MIN_UTTERANCE_S:
+            await session.send_notice(NO_SPEECH_NOTICE)
             return
         # A capture this quiet holds no speech: the microphone's noise floor is far below
         # MIN_UTTERANCE_RMS and a word at arm's length is several hundred. Sent on, it would
@@ -838,7 +840,7 @@ class DeviceHub:
         if level is not None and level < audio.MIN_UTTERANCE_RMS:
             log.debug("[%s] %.2fs capture at RMS %.0f dropped: quieter than %d, so it holds no speech",
                       session.device_id, seconds, level, audio.MIN_UTTERANCE_RMS)
-            await session.send_notice("Didn't catch that - hold the button while speaking")
+            await session.send_notice(NO_SPEECH_NOTICE)
             return
         wav = audio.wav_bytes(bytes(up.pcm), up.rate)
         session.spawn(self.delegate.on_utterance(session, up.id, wav, seconds))

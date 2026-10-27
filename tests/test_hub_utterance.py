@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from hermes_gadget_plugin import hub as hubmod
 
 RATE = 16000
-NOTICE = "Didn't catch that - hold the button while speaking"
+NOTICE = hubmod.NO_SPEECH_NOTICE
 
 
 class _Delegate:
@@ -77,3 +77,13 @@ def test_speech_reaches_the_adapter():
     assert len(session.spawned) == 1
     asyncio.run(session.spawned[0])
     assert delegate.utterances == [("u1", 1.5)]
+
+
+def test_both_gates_drop_the_same_short_capture():
+    """One threshold, one answer: the hub and the adapter judge a 0.3 s press the same way."""
+    pcm = _pcm(0.3, 3000)  # loud, but a tap
+    session = _Session(pcm)
+    delegate = _end(session)
+    assert session.notices == [NOTICE]
+    assert delegate.utterances == []
+    assert hubmod.audio.utterance_rejection(hubmod.audio.wav_bytes(pcm, RATE), 0.3) is not None
