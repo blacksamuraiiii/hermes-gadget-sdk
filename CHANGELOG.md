@@ -2,13 +2,47 @@
 
 ## Unreleased
 
-### Upstream 0.3.0 → 0.4.1: what this fork took, weighed, and left out
+### This fork (moji)
 
-Fork point `469978c` (2026-10-21) to upstream `0fdb676` (2026-10-26): 220 commits, releases v0.3.0 / v0.4.0 / v0.4.1. Nothing is merged wholesale — the fork rewrote the font layer (core), the relay and the reminder bridge (adapter), and board bring-up, so each change is picked by hand with `git cherry-pick -x` on `upstream-tracking`, and the font work is taken as semantics rather than as a patch.
+This fork ports one board — Movecall moji (ESP32-S3-WROOM-1-N16R8, 240×240 GC9A01 round panel,
+one ES8311 with an analog microphone, USB power) — and talks to Hermes over USB through
+`tools/usb_relay.py`. Everything in this section is its own work on `feat/moji-0.3`; the section
+after it is what came from upstream and how.
+
+- The wake word uses the configured threshold again. Bring-up pinned it to 0.05 (a 5 % score, so
+  almost anything woke the board) and the start-up line printed the configured number instead of
+  the value actually set, so the README's expected log was wrong in both directions. Both now come
+  from `CONFIG_HG_WAKE_THRESHOLD`, and the log prints the value set (`threshold 0.20`). The
+  15/20/25 by distance and noise calibration is a separate measurement.
+- `hermes gadget update <device> --latest` reads this fork's releases, and a release's
+  `manifest.json` may name its `tag`, so `moji-0.X` tags download instead of 404ing on
+  `download/v0.X.0/`. A manifest without `tag` (upstream's) keeps the old path.
+- A wake engine holding the microphone no longer has its samples posted as `Mic` events: the app
+  drops them outside a turn anyway, and posting them cost about a hundred allocations and copies a
+  second, competing with real audio and control events for a 96-deep queue.
+- The relay reopens the port one call at a time (the watchdog, a read failure and a silent device
+  could open it twice), keeps its serial pump alive when a forward raises instead of dying
+  silently, and resets its outage state completely. It also writes down the Windows device tree
+  once an outage passes three minutes, which tells a stuck port from a pulled cable.
+- Bring-up logging — tap counters, feed count, microphone peak, the "still silent" warning — is
+  behind the new `CONFIG_HG_WAKE_DIAG`, off by default, so a release image's log carries `hit:`
+  and the lifecycle lines only.
+- `hermes gadget show <device> "title" "body" --ttl 20` puts a card on the screen from outside a
+  turn: a script, a hook or a cron job writes `card.json`, the gateway picks it up within a couple
+  of seconds, and the card clears itself when the TTL runs out.
+- A board that draws no dashboard (`caps.dashboard` 0, which is what this board reports) now gets
+  a card when Hermes waits for an approval, once per waiting session.
+- Documentation: the moji row in `docs/hardware-validation.md` and the Chinese README describe what
+  has actually been seen on the board, and the README's acceptance table matches the logging a
+  release build produces.
+
+### From upstream (0.3.0 → 0.4.1): what this fork took, weighed, and left out
+
+Fork point `469978c` (2026-10-21) to upstream `0fdb676` (2026-10-26): 220 commits, releases v0.3.0 / v0.4.0 / v0.4.1. Nothing is merged wholesale — the fork rewrote the font layer (core), the relay and the reminder bridge (adapter), and board bring-up, so each change is picked by hand with `git cherry-pick -x` on `feat/moji-0.3`, and the font work is taken as semantics rather than as a patch.
 
 Adopted:
 
-- The stuck-send check no longer restarts a board in the middle of a recording. It read the clock before it read when the current send began, so a message the send task started in between looked about 49 days old, and the board logged "the WebSocket send task is stuck; restarting" and reset itself a few seconds after TALK. The check now uses a signed difference. (upstream `3d98df6`; seen on an AMOLED-1.75C) → this commit.
+- The stuck-send check no longer restarts a board in the middle of a recording. It read the clock before it read when the current send began, so a message the send task started in between looked about 49 days old, and the board logged "the WebSocket send task is stuck; restarting" and reset itself a few seconds after TALK. The check now uses a signed difference. (upstream `3d98df6`; seen on an AMOLED-1.75C) → `4febc62`.
 - A speaker stream that starts right after another no longer loses the first tone (upstream `2fe13d5`, v0.4.0) → `af9c503`.
 - `gadget update --latest` compares versions and refuses to install an older release (upstream `0c459f7`, `1a3b86e`; v0.4.1) → `7152feb`, `c803e0f`.
 - The plugin compatibility gate registers every module-level import, class-body imports included (upstream `327946a`, `e795bb5`; v0.4.1) → `fb30e8a`, `3189508`.
@@ -23,8 +57,10 @@ Left out, and why:
 
 - Resting clock: no RTC on the board and no independent network time source over USB, and the protocol carries no time, so the clock face could never be right.
 - Face-down sleep: no IMU on the board; `BoardConfig::imu` stays unset.
-- Dashboard and profile switching: no CANCEL key and no touch, so `caps.dashboard` is not advertised and the reminder bridge stays this board's delivery path.
+- Dashboard and profile switching: no CANCEL key and no touch, so `caps.dashboard` is not advertised and the reminder bridge stays this board's delivery path. A board without a dashboard now gets a card when Hermes waits for an approval (see "This fork").
 - Installer site dependency bumps: unrelated to this board.
+- 32 KB TCP windows on PSRAM boards (upstream `e627510`, v0.4.1): it only affects the lwIP/Wi-Fi path, and this board talks over USB. Taken when Wi-Fi comes back.
+- Tailscale tailnet reachability (upstream `bfabbe4`, v0.4.1): off on every board, and it solves the same problem as this fork's USB relay. Revisit only if the board has to work without a USB host, where it is a better answer than the USB-NCM bridge that was rejected on 2026-10-23.
 
 ### Hermes plugin
 
