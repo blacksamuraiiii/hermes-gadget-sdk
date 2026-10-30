@@ -196,6 +196,7 @@ class Relay:
         self.reopen_since: float | None = None
         self.port_missing_hinted = False
         self.pnp_snapshot_taken = False
+        self._recovering = False             # one serial reopen at a time
 
     # ---- serial -----------------------------------------------------------
     def open_serial(self) -> None:
@@ -221,21 +222,32 @@ class Relay:
             LOG.info("board reset; waiting for its hello")
 
     async def recover_serial(self, why: str) -> None:
-        """Close the port, reopen it (rescans by VID:PID) and forget any half frame."""
-        old, self.ser = self.ser, None
-        if old is not None:
-            try:
-                old.close()
-            except Exception:  # noqa: BLE001 - already gone
-                pass
-        try:
-            await asyncio.to_thread(self.open_serial)
-        except Exception as exc:  # noqa: BLE001 - the board may be gone for a while
-            await self.wait_before_reopen(f"serial reopen failed ({why})", exc)
+        """Close the port, reopen it (rescans by VID:PID) and forget any half frame.
+
+        One reopen at a time: the watchdog, a read failure and a silent device all land here, and
+        a second open while the first is still waiting would hold the same port twice, leak the
+        first handle and let two readers split the bytes into broken frames.
+        """
+        if self._recovering:
             return
-        self.decoder = SlipDecoder()  # a fresh reader: drop any half frame
-        self.last_device = self.last_rx = time.monotonic()
-        self.port_came_back(why)
+        self._recovering = True
+        try:
+            old, self.ser = self.ser, None
+            if old is not None:
+                try:
+                    old.close()
+                except Exception:  # noqa: BLE001 - already gone
+                    pass
+            try:
+                await asyncio.to_thread(self.open_serial)
+            except Exception as exc:  # noqa: BLE001 - the board may be gone for a while
+                await self.wait_before_reopen(f"serial reopen failed ({why})", exc)
+                return
+            self.decoder = SlipDecoder()  # a fresh reader: drop any half frame
+            self.last_device = self.last_rx = time.monotonic()
+            self.port_came_back(why)
+        finally:
+            self._recovering = False
 
     def port_came_back(self, why: str) -> None:
         """The port is open again: forget the backoff and say how long it took."""
@@ -381,7 +393,13 @@ class Relay:
             for line in lines:
                 LOG.info("[dev] %s", line)
             for ftype, payload in frames:
-                await self.on_frame(ftype, payload)
+                try:
+                    await self.on_frame(ftype, payload)
+                except Exception as exc:  # noqa: BLE001 - a send into a dying WS raises here
+                    # asyncio would swallow this and leave the task dead, so the device-to-Hermes
+                    # direction would stop for good while the relay still looked alive.
+                    LOG.warning("frame 0x%02X (%d B) not forwarded: %s", ftype, len(payload), exc)
+                    await self.drop_ws("a frame could not be forwarded")
 
     async def on_frame(self, ftype: int, payload: bytes) -> None:
         if ftype == T_TEXT:
@@ -457,6 +475,7 @@ class Relay:
             except Exception as exc:  # noqa: BLE001 - no board on the bus yet
                 await self.wait_before_reopen("waiting for the board", exc)
         self.reopen_attempts, self.reopen_since, self.port_missing_hinted = 0, None, False
+        self.pnp_snapshot_taken = False
         tasks = [asyncio.create_task(self.serial_reader(), name="serial"),
                  asyncio.create_task(self.ws_reader(), name="ws"),
                  asyncio.create_task(self.watchdog(), name="watchdog")]
