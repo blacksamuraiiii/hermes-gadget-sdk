@@ -250,10 +250,11 @@ void wake_attach(hg::AudioIn* mic) {
   }
   ESP_LOGI(TAG, "wake word: %d samples per MultiNet frame", g_mn->get_samp_chunksize(g_mn_data));
 
-  // TEMPORARY (bring-up): 0.05 instead of CONFIG_HG_WAKE_THRESHOLD/100, so the console shows
-  // the score of every command word instead of only the ones over the shipped threshold.
-  // Restore the Kconfig mapping once the distribution is measured.
-  const float threshold = 0.05f;
+  // Kconfig gives a percentage: lower is more sensitive, the same direction as the model's
+  // probability threshold. Bring-up pinned this to 0.05 to print every command's score; the
+  // shipped value is the Kconfig one again, and the log below prints the value actually set so
+  // the README's expected log can't drift away from the code.
+  const float threshold = CONFIG_HG_WAKE_THRESHOLD / 100.0f;
   g_mn->set_det_threshold(g_mn_data, threshold);
 
   esp_ae_rate_cvt_cfg_t cvt = {};
@@ -281,8 +282,8 @@ void wake_attach(hg::AudioIn* mic) {
   }
   xTaskCreate(&task, "hg-wake", 4096, nullptr, 5, nullptr);
   g_ready = true;
-  ESP_LOGI(TAG, "wake word ready: %s, threshold %d, frame %d samples at %u Hz", mn_name,
-           CONFIG_HG_WAKE_THRESHOLD, g_feed_chunk, static_cast<unsigned>(kAfeRate));
+  ESP_LOGI(TAG, "wake word ready: %s, threshold %.2f, frame %d samples at %u Hz", mn_name,
+           static_cast<double>(threshold), g_feed_chunk, static_cast<unsigned>(kAfeRate));
 }
 
 }  // namespace hgp
