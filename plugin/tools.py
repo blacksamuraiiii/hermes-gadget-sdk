@@ -59,6 +59,9 @@ WEATHER_SCHEMA = {
         "type": "object",
         "properties": {
             "days": {"type": "integer", "description": "Forecast days, 1-10. Default 3."},
+            "place": {"type": "string",
+                      "description": "City name when the question names one (e.g. 南京); "
+                                     "omit for the place the gadget is set to."},
             "show": {"type": "boolean",
                      "description": "Also put the forecast on the gadget's screen. Default false."},
             "device": _DEVICE_PARAM,
@@ -205,7 +208,7 @@ def gadget_weather(args: dict, **_kw) -> str:
     except (TypeError, ValueError):
         days = 3
     try:
-        said = weather.answer(days=days)
+        said = weather.answer(days=days, place=(args.get("place") or None))
     except weather.WeatherError as exc:
         return _error(str(exc))
     result: dict[str, Any] = {"success": True, "answer": said}
@@ -221,7 +224,7 @@ def gadget_weather(args: dict, **_kw) -> str:
                 result["shown_error"] = err
             else:
                 try:
-                    title, body = weather.card(days=days)
+                    title, body = weather.card(days=days, place=(args.get("place") or None))
                     _run(adapter, session.show_card(title, body, 300))
                     result["shown_on"] = session.name
                 except Exception as exc:  # the answer is still worth returning

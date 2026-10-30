@@ -119,6 +119,28 @@ def test_the_answer_is_cached_for_a_few_minutes(wired):
     assert len(wired["calls"]) == before  # second call served from the cache
 
 
+def test_a_named_place_goes_through_geoapi_even_when_coordinates_are_pinned(monkeypatch, wired):
+    """「南京」 must not be answered with 扬州's pinned point."""
+    seen: list[tuple[str, dict]] = []
+
+    def transport(path, params=None):
+        seen.append((path, params or {}))
+        if path == "/geo/v2/city/lookup":
+            assert params["location"] == "南京"
+            return {"code": "200", "location": [{"name": "南京", "lat": "32.06", "lon": "118.80"}]}
+        if path.startswith("/weatheralert/"):
+            return {"alerts": []}
+        if "/current/" in path:
+            assert "/32.06/118.80" in path  # the named city, not 32.39/119.42
+            return CURRENT
+        return DAILY
+
+    monkeypatch.setattr(weather, "_get_json", transport)
+    said = weather.answer(place="南京")
+    assert said.startswith("南京")
+    assert any(path == "/geo/v2/city/lookup" for path, _ in seen)
+
+
 def test_a_missing_place_is_named_in_the_error(monkeypatch, wired):
     monkeypatch.setenv("QWEATHER_LAT", "")
     monkeypatch.setenv("QWEATHER_LON", "")

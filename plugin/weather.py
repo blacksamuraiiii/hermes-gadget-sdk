@@ -99,25 +99,31 @@ _CODE_HINTS = {
 }
 
 
-def resolve_place(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """``{'name', 'lat', 'lon'}`` for the configured place, GeoAPI once per process."""
+def resolve_place(cfg: Optional[dict[str, Any]] = None,
+                  place: Optional[str] = None) -> dict[str, Any]:
+    """``{'name', 'lat', 'lon'}`` — the configured place, or a named one, GeoAPI once per process.
+
+    A named place always goes through GeoAPI: the pinned coordinates describe one point, and
+    answering "南京" with 扬州's numbers would be worse than saying the place was not found.
+    """
     cfg = cfg or config()
-    if cfg["lat"] and cfg["lon"]:
+    wanted = (place or "").strip() or cfg["place"]
+    if place is None and cfg["lat"] and cfg["lon"]:
         return {"name": cfg["place"], "lat": cfg["lat"], "lon": cfg["lon"]}
     with _lock:
-        cached = _place_cache.get(cfg["place"])
+        cached = _place_cache.get(wanted)
     if cached:
         return cached
     data = _get_json("/geo/v2/city/lookup",
-                     {"location": cfg["place"], "range": "cn", "number": 1, "lang": "zh"})
+                     {"location": wanted, "range": "cn", "number": 1, "lang": "zh"})
     found = (data.get("location") or [{}])[0]
     if not found.get("lat") or not found.get("lon"):
-        raise WeatherError(f"找不到地点「{cfg['place']}」")
-    place = {"name": found.get("name") or cfg["place"],
-             "lat": f"{float(found['lat']):.2f}", "lon": f"{float(found['lon']):.2f}"}
+        raise WeatherError(f"找不到地点「{wanted}」")
+    found_place = {"name": found.get("name") or wanted,
+                   "lat": f"{float(found['lat']):.2f}", "lon": f"{float(found['lon']):.2f}"}
     with _lock:
-        _place_cache[cfg["place"]] = place
-    return place
+        _place_cache[wanted] = found_place
+    return found_place
 
 
 def now(place: dict[str, Any]) -> dict[str, Any]:
@@ -211,28 +217,28 @@ def describe_alerts(items: list[dict[str, Any]]) -> str:
     return f"⚠ {first}{more}" if first else f"⚠ {len(items)} 条预警"
 
 
-def answer(days: int = 3) -> str:
+def answer(days: int = 3, place: Optional[str] = None) -> str:
     """The line a voice question gets, cached for a few minutes."""
-    key = f"{_env('QWEATHER_PLACE') or DEFAULT_PLACE}|{days}"
+    key = f"{place or _env('QWEATHER_PLACE') or DEFAULT_PLACE}|{days}"
     with _lock:
         cached = _answer_cache.get(key)
     if cached and time.time() - cached["at"] < CACHE_S:
         return cached["text"]
-    place = resolve_place()
-    lines = [describe_alerts(alerts(place)), describe_now(place, now(place))]
-    lines += [describe_day(i, d) for i, d in enumerate(forecast(place, days))]
+    spot = resolve_place(place=place)
+    lines = [describe_alerts(alerts(spot)), describe_now(spot, now(spot))]
+    lines += [describe_day(i, d) for i, d in enumerate(forecast(spot, days))]
     text = "；".join(p for p in lines if p)
     with _lock:
         _answer_cache[key] = {"at": time.time(), "text": text}
     return text
 
 
-def card(days: int = 3) -> tuple[str, str]:
+def card(days: int = 3, place: Optional[str] = None) -> tuple[str, str]:
     """``(title, body)`` sized for 26 columns × 5 rows: a warning line, now, then two days."""
-    place = resolve_place()
-    active = describe_alerts(alerts(place))
+    spot = resolve_place(place=place)
+    active = describe_alerts(alerts(spot))
     lines = [active] if active else []
-    lines.append(describe_now(place, now(place)))
-    lines += [describe_day(i, d) for i, d in enumerate(forecast(place, days)[:2])]
-    title = f"{place.get('name') or ''}天气".strip()
+    lines.append(describe_now(spot, now(spot)))
+    lines += [describe_day(i, d) for i, d in enumerate(forecast(spot, days)[:2])]
+    title = f"{spot.get('name') or ''}天气".strip()
     return title, "\n".join(p for p in lines if p)

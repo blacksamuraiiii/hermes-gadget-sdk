@@ -332,7 +332,7 @@ def _cmd_weather(args) -> None:
     from . import weather
 
     try:
-        title, body = weather.card(days=args.days)
+        title, body = weather.card(days=args.days, place=args.place)
     except weather.WeatherError as exc:
         sys.exit(f"weather: {exc}")
     print(f"{title}\n{body}")
@@ -390,6 +390,8 @@ def setup_argparse(parser) -> None:
     weather = subs.add_parser("weather", help="Show the forecast on a gadget (QWeather)")
     weather.add_argument("device", nargs="?", help="Device id or name; omit to print only")
     weather.add_argument("--days", type=int, default=3, help="Forecast days, 1-10 (default 3)")
+    weather.add_argument("--place", default=None,
+                         help="City name (e.g. 南京); omit for the configured place")
     weather.add_argument("--ttl", type=float, default=300.0, help="Seconds it stays on screen (default 300)")
     weather.add_argument("--no-card", action="store_true", help="Print the forecast, put nothing on the screen")
     parser.set_defaults(func=handle)
