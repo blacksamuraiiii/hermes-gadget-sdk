@@ -229,18 +229,29 @@ def gadget_weather(args: dict, **_kw) -> str:
     return json.dumps(result)
 
 
+def weather_available() -> bool:
+    """Weather needs the key and host, not a device: it answers a spoken question by itself."""
+    from . import weather
+
+    try:
+        weather.config()
+        return True
+    except weather.WeatherError:
+        return False
+
+
 def available() -> bool:
     """Reachability: tools work only in the process hosting the gadget hub."""
     return runtime.any_active()
 
 
 def register_tools(ctx) -> None:
-    for schema, handler, emoji in (
-        (DEVICES_SCHEMA, gadget_devices, "📟"),
-        (DISPLAY_SCHEMA, gadget_display, "🖥️"),
-        (ACTION_SCHEMA, gadget_action, "🎛️"),
-        (WEATHER_SCHEMA, gadget_weather, "🌤️"),
+    for schema, handler, emoji, check in (
+        (DEVICES_SCHEMA, gadget_devices, "📟", available),
+        (DISPLAY_SCHEMA, gadget_display, "🖥️", available),
+        (ACTION_SCHEMA, gadget_action, "🎛️", available),
+        (WEATHER_SCHEMA, gadget_weather, "🌤️", weather_available),
     ):
         ctx.register_tool(
             name=schema["name"], toolset=TOOLSET, schema=schema, handler=handler,
-            check_fn=available, description=schema["description"], emoji=emoji)
+            check_fn=check, description=schema["description"], emoji=emoji)
