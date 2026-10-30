@@ -351,6 +351,9 @@ class App {
   uint32_t heartbeat_ms_ = 20000;
   int backoff_ = 0;
   int attempts_ = 0;
+  // Connect attempts that never reached a handshake, in a row. A gateway restart outlives the
+  // connect window, so the first misses are routine and must not put an error on the screen.
+  int connect_misses_ = 0;
   std::string fatal_;   // unrecoverable until reconfigured
   std::string last_close_;
 

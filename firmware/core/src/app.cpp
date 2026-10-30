@@ -16,6 +16,9 @@ namespace {
 constexpr uint32_t kBootScreenMs = 800;
 constexpr uint32_t kConnectTimeoutMs = 10000;
 constexpr uint32_t kHandshakeTimeoutMs = 10000;
+// Connect misses tolerated before the screen reports one: a gateway restart takes longer than
+// kConnectTimeoutMs, and "connect timeout" during a routine restart reads as a device fault.
+constexpr int kConnectMissesBeforeError = 3;
 constexpr uint32_t kStableSessionMs = 30000;
 constexpr uint32_t kMinUtteranceMs = 350;
 constexpr uint32_t kMaxUtteranceMs = 30000;
@@ -477,6 +480,7 @@ void App::h_welcome(const json::Value& m) {
   phase_since_ = now();
   online_since_ = now();
   attempts_ = 0;
+  connect_misses_ = 0;
   paired_ = m["paired"].as_bool();
   int hb = static_cast<int>(m["heartbeat_s"].as_int(20));
   heartbeat_ms_ = static_cast<uint32_t>(std::max(5, std::min(300, hb))) * 1000u;
@@ -1501,7 +1505,10 @@ void App::tick() {
 
   if (phase_ == Phase::Connecting && !reconnect_pending_ && t - phase_since_ > kConnectTimeoutMs) {
     hal_.transport->close();
-    drop_session("connect timeout");
+    // A gateway restart (or a slow boot) outlives this window, so the first misses are routine:
+    // the screen keeps saying "connecting" and the backoff retries. Only a run of failures is
+    // worth an error line.
+    drop_session(++connect_misses_ < kConnectMissesBeforeError ? std::string_view() : "connect timeout");
     update_model();
   } else if (phase_ == Phase::Handshake && t - phase_since_ > kHandshakeTimeoutMs) {
     hal_.transport->close();

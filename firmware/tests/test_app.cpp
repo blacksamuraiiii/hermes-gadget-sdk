@@ -626,6 +626,29 @@ TEST("app: lost connections retry with backoff") {
   CHECK_EQ(r.fake.connects, before + 1);
 }
 
+TEST("app: a routine gateway restart does not put a connect error on the screen") {
+  Rig r;
+  r.app.begin();
+  r.app.on_network(true, "test-wifi");
+  r.advance(1000);  // the first connect attempt never opens
+  auto last_close = [&r] {
+    hg::json::Value v;
+    CHECK(hg::json::parse(r.app.console("diag").substr(6), v));
+    return v["connection"]["last_close"].as_string();
+  };
+  // A gateway restart outlives the 10 s connect window: the first misses are routine and the
+  // screen keeps saying "connecting" instead of reporting a fault.
+  r.advance(12000);
+  CHECK_EQ(last_close(), std::string(""));
+  CHECK(r.app.screen() == hg::Screen::Connecting);
+  r.advance(15000);
+  CHECK_EQ(last_close(), std::string(""));
+  CHECK(r.app.screen() == hg::Screen::Connecting);
+  // A run of them is a real fault and does get reported.
+  r.advance(20000);
+  CHECK_EQ(last_close(), std::string("connect timeout"));
+}
+
 TEST("app: a silent server is detected by the heartbeat timeout") {
   Rig r;
   r.bring_online(true);
