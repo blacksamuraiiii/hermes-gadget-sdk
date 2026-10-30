@@ -125,6 +125,15 @@ platforms:
       relay_start: tools/relay_start.ps1
       relay_stop: tools/relay_stop.ps1
       # relay_watch: true                  # 需要每 2 分钟兜 relay 崩溃时才开，默认关
+
+# 工具面：天气走插件工具 gadget_weather，搜索/取页走 web，记忆与 clarify 留着
+platform_toolsets:
+  gadget: [clarify, memory, web]
+  cli: [clarify, memory, web]
+# anysearch 的 3 个检索工具挡在工具表外（插件仍作为 web_search 的后端，只是不额外占 schema）
+known_plugin_toolsets:
+  gadget: [anysearch]
+  cli: [anysearch]
 ```
 
 提示音文件用 `tools/make_cues.py` 生成（`approval` / `clarify` / `done` / `wake`），落在
