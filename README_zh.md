@@ -38,7 +38,9 @@ CONFIG_HG_DEFAULT_SERVER_URL="ws://usb/gadget"
   放在 `~/.hermes/plugin-data/gadget/cues/`。整条提醒不起回合、不调 STT/TTS、不花 token。
 - 设备声明 `charset=utf-8` 时卡片写中文（需要授权 / 需要口令 / 请选择 / 已完成）。
 - relay 生命周期挂在 gateway 上：插件 `extra.relay_start` 在 `connect()` 拉起、`extra.relay_stop` 在
-  `disconnect()` 停下；另有 120 s 看门狗兜崩溃与拔插。Windows 侧用 `pythonw.exe` 起，**没有窗口**。
+  `disconnect()` 停下。**每 2 分钟的 relay 巡检默认关闭**（`extra.relay_watch: true` 才开）——
+  板子不是一直插在电脑上，插着才需要兜 relay 崩溃；常插场景再打开它兜崩溃与拔插。
+  Windows 侧用 `pythonw.exe` 起，**没有窗口**。
 - 开关：`platforms.gadget.extra.reminders`（默认 true）、`reminder_min_turn_s`（默认 45）。
 
 ### 3. 屏幕字体：中文 CJK 点阵 + 12 px
@@ -164,6 +166,8 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
   `firmware/esp32/main/port_wake.cpp` 的 `wake_attach` 失败路径没有 cleanup。
 - **pytest 分类口径**：`notes/验收-pytest分类.md` 记的是当前基线（7 failed），
   与立项时写的 18 项不是同一批，发版说明按实际基线写。
+- **C4（把 moji 的增益/VAD 调校回馈上游）暂时不做**：数值已写进 `docs/hardware.md` 与
+  `notes/硬件-墨迹板参数.md`，等阈值标定有结论再一次性提 issue，避免提两次。
 - 进程外投递（`standalone_sender_fn` + spool）：仍搁置，等需求明确再做。
 
 ### 3. 与上游的关系（为什么 GitHub 显示「落后 284」）

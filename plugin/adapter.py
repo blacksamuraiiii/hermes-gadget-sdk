@@ -209,6 +209,10 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         # Empty = manage the relay yourself (tools/relay.sh).
         self._relay_start_cmd = str(extra.get("relay_start") or "").strip()
         self._relay_stop_cmd = str(extra.get("relay_stop") or "").strip()
+        # Off by default: the board is not always plugged in, and a relay restart every two minutes
+        # only churns COM5 when it is not. Turn it on for a board that stays wired and must come
+        # back by itself after the relay crashes.
+        self._relay_watch_on = _flag(extra.get("relay_watch"), False)
         self._relay_task: Optional[asyncio.Task] = None
         self._reminder_min_turn_s = float(extra.get("reminder_min_turn_s") or notify.MIN_TURN_S)
         self._cue_cache: Dict[Tuple[str, int], bytes] = {}
@@ -328,7 +332,8 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             return False
         # The USB relay dials back into this port, so it starts once we are listening.
         await self.start_relay_if_configured()
-        if self._relay_start_cmd and (self._relay_task is None or self._relay_task.done()):
+        if self._relay_watch_on and self._relay_start_cmd and (
+                self._relay_task is None or self._relay_task.done()):
             self._relay_task = asyncio.create_task(self._watch_relay())
         self._loop = asyncio.get_running_loop()
         self._registry_key = getattr(self, "_owner_profile", None) or "default"

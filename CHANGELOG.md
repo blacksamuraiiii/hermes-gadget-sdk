@@ -61,6 +61,8 @@ Left out, and why:
 - Installer site dependency bumps: unrelated to this board.
 - 32 KB TCP windows on PSRAM boards (upstream `e627510`, v0.4.1): it only affects the lwIP/Wi-Fi path, and this board talks over USB. Taken when Wi-Fi comes back.
 - Tailscale tailnet reachability (upstream `bfabbe4`, v0.4.1): off on every board, and it solves the same problem as this fork's USB relay. Revisit only if the board has to work without a USB host, where it is a better answer than the USB-NCM bridge that was rejected on 2026-10-23.
+- Reply audio sent as far ahead as the device can hold (upstream `f481640` + `2075171` + `ea205f4`: `caps.speaker.buffer_ms` in the hello, the plugin leading by half of it). The USB serial link has not stuttered a reply with the fixed 0.5 s lead this board uses, and taking it means porting the protocol and the hub by hand. Taken with the next plugin sync if a reply ever stutters.
+- Feeding this board's tuning back upstream (gain, VAD floor, PA and LED pins) waits until the wake-word thresholds are calibrated; the numbers are already written down in `docs/hardware.md` and `notes/硬件-墨迹板参数.md`.
 
 ## Unreleased
 

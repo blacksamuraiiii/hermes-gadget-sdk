@@ -1,0 +1,32 @@
+{
+  "name": "Hermes Gadget",
+  "version": "0.3.0",
+  "tag": "moji-0.3",
+  "builds": [
+    {
+      "board": "movecall-moji-esp32s3",
+      "image_board": "movecall-moji-esp32s3",
+      "title": "Movecall Moji",
+      "summary": "ESP32-S3 16 MB flash, GC9A01 240x240, analog mic, USB serial link",
+      "docs": "docs/hardware.md#movecall-moji-esp32-s3",
+      "ready_made": false,
+      "chip": "esp32s3",
+      "flash_size": 16,
+      "psram": "octal",
+      "image": {
+        "path": "hermes-gadget-movecall-moji-esp32s3-0.3.0.bin",
+        "size": 2330256,
+        "sha256": "40e35895d73aaa6d03d7f90acf6cb62e525df33c2588047d687feb56ea7f5e29"
+      },
+      "app": {
+        "path": "hermes-gadget-movecall-moji-esp32s3-0.3.0-app.bin",
+        "size": 2199184,
+        "sha256": "c908f394e7f0559847b2d81a3e78a1ca047019592457a7e94891181e31a3b014"
+      },
+      "settings": {
+        "offset": 36864,
+        "size": 24576
+      }
+    }
+  ]
+}
