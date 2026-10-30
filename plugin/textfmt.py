@@ -37,11 +37,51 @@ _BULLET = re.compile(r"^(\s*)[-*+]\s+", re.MULTILINE)
 _RULE = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$", re.MULTILINE)
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", re.MULTILINE)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+# Raw tool-call markers a model emits as TEXT when the profile has no such tool
+# ("<｜｜DSML｜｜ calls> ... </｜｜DSML｜｜ calls>": the tokenizer's <|tool▁calls|> arrives with
+# fullwidth bars). Both glyphs are drawable, so without this they reach the screen
+# and get read aloud. Strip the whole block first, then a truncated open block, then
+# any leftover marker fragment.
+_BAR = r"[|\uff5c]{1,2}"
+_TOKEN_NAME = r"[A-Za-z0-9_\u2581 ]{1,24}"
+_TOOL_BLOCK = re.compile(
+    rf"<{_BAR}{_TOKEN_NAME}{_BAR}.*</{_BAR}{_TOKEN_NAME}{_BAR}[^<>\n]*>",
+    re.DOTALL)
+_TOOL_OPEN_TAIL = re.compile(
+    rf"</?{_BAR}{_TOKEN_NAME}{_BAR}[^<>\n]*>.*\Z", re.DOTALL)
+_TOOL_TOKEN = re.compile(rf"</?{_BAR}{_TOKEN_NAME}{_BAR}[^<>\n]*>")
+# What a half-stripped call leaves behind from a nested marker: `name="terminal"`,
+# `parameter string="true">true`. Only consulted when markers were actually present.
+_TOOL_RESIDUE = re.compile(r"\b(?:name|parameter|invoke|arguments|string)\s*=", re.IGNORECASE)
 _BLANKS = re.compile(r"\n{3,}")
 _SPACES = re.compile(r"[ \t]{2,}")
 
 
+def strip_tool_tokens(text: str) -> str:
+    """Drop raw tool-call markers (and the block they wrap) from model output.
+
+    A profile without the tool the model wants still gets the model's best attempt at
+    calling it, as plain text: ``<｜｜DSML｜｜ calls>...``. Nothing downstream can draw or
+    speak that, so remove it here — the same helper serves the screen path
+    (:func:`for_device`) and the spoken-reply path in the adapter.
+
+    Nested markers leave parameter fragments behind after the marker pass
+    (``… parameter string="true">true</…parameter>``), so once markers were present the
+    remaining text is cut at the first call-parameter fragment.
+    """
+    if not text or ("<|" not in text and "<\uff5c" not in text):
+        return text
+    text = _TOOL_BLOCK.sub("", text)
+    text = _TOOL_OPEN_TAIL.sub("", text)
+    text = _TOOL_TOKEN.sub("", text)
+    residue = _TOOL_RESIDUE.search(text)
+    if residue:
+        text = text[:residue.start()]
+    return text
+
+
 def strip_markdown(text: str) -> str:
+    text = strip_tool_tokens(text)
     text = _THINK.sub("", text)
     text = _FENCE.sub(lambda m: m.group(1).rstrip("\n"), text)
     text = _INLINE_CODE.sub(r"\1", text)

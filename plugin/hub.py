@@ -532,8 +532,16 @@ class DeviceSession:
         }
 
     def prompt_context(self) -> str:
-        """Stable per-device context for the model (only changes if the device does)."""
-        parts = [f'The user is speaking through the gadget "{self.name}" (board {self.board}, id {self.device_id}).']
+        """Per-turn context for the model: the device, and the wall clock.
+
+        The clock lives here rather than in the system prompt because this string is rebuilt
+        for every turn (``channel_prompt``), while ``Conversation started:`` is fixed at
+        session start — a long-lived gadget session would otherwise answer with the hour it
+        booted at, or (with no shell) refuse to answer time questions at all.
+        """
+        parts = [f"Current time: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}."
+                 " Answer a time question with this value directly; you have no terminal."]
+        parts.append(f'The user is speaking through the gadget "{self.name}" (board {self.board}, id {self.device_id}).')
         disp = self.display
         if disp.get("text_cols") and disp.get("text_rows"):
             parts.append(

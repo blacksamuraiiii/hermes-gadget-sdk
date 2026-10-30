@@ -77,6 +77,10 @@ DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as on
 PAIRING_TRIGGER = "/status"
 HOST_ONLY_TEXT = "Can't show all of it here. Approve or deny it on the host."
 VOICE_OFF_NOTICE = "Voice is off. This screen only shows reminders."
+# A model that wants a tool the profile no longer has emits the call as text
+# ("<｜｜DSML｜｜ calls>…"). textfmt strips the marker; when the whole reply was such a
+# call there is nothing left to show or say, and a blank screen reads as a hang.
+EMPTY_REPLY_NOTICE = "这条回复是空的，请再问一次。"
 # A short press or a silent capture used to start a turn whose transcript came back empty, hanging
 # the device on "thinking" for half an hour. Both are dropped before Hermes sees them; the rules
 # live in audio.utterance_rejection so they can be tested without Hermes.
@@ -721,6 +725,10 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if not session.paired:
             await self._forward_unpaired(session, content)
             return SendResult(success=True, message_id=uuid.uuid4().hex[:12])
+        raw_content = content or ""
+        content = textfmt.strip_tool_tokens(raw_content)
+        if raw_content.strip() and not content.strip():
+            content = EMPTY_REPLY_NOTICE  # the whole reply was a tool-call marker: never blank the screen
         heard = transcript_echo(content or "")
         if heard is not None:
             # Show what speech-to-text heard as the user's line, not as a reply.
@@ -1011,6 +1019,18 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if caption:
             await self.send(chat_id, caption, metadata=metadata)
         return result
+
+    async def _synthesize_auto_tts(self, text_content: str):
+        """Speak the reply with raw tool-call markers stripped.
+
+        Hermes synthesizes the reply text before :meth:`send` sees it, so cleaning only the
+        screen path would still let a ``<｜｜DSML｜｜ calls>`` block be read aloud.
+        """
+        raw_content = text_content or ""
+        clean = textfmt.strip_tool_tokens(raw_content)
+        if raw_content.strip() and not clean.strip():
+            clean = EMPTY_REPLY_NOTICE
+        return await super()._synthesize_auto_tts(clean)
 
     def prepare_tts_text(self, text: str) -> str:
         """Speak temperatures in Chinese.
