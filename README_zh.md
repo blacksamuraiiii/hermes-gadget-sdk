@@ -31,6 +31,9 @@ GitHub 上是 **pre-release**：`hermes gadget update --latest` 只认正式发�
   现在口播用「22摄氏度」，中文屏仍显示 `22°C`（ASCII 屏照旧折成 `deg`）。
 - 提醒按 `request_id` 去重，不再按 cue 全局去重：两条不同 approval 相隔不到 4 秒时，第二条不再被吞。
 - `hermes gadget show <设备> "标题" "正文" --ttl 20`：进程外推卡片，不起回合、不烧 token。
+- **天气**：`hermes gadget weather [设备]` 把实时天气 + 3 天预报推到屏幕，agent 侧对应工具
+  `gadget_weather`（语音问「今天天气」直接答，不再走搜索）。数据源和风天气（中文原生、带官方预警），
+  配置只读环境变量：`QWEATHER_HOST` / `QWEATHER_KEY` / `QWEATHER_PLACE`，写进 profile 的 `.env`。
 - 无 dashboard 的板（本板）在 Hermes 等待批准时也会出「等待你确认」卡片。
 - 每 2 分钟的 relay 巡检**默认关闭**（`platforms.gadget.extra.relay_watch: true` 才开）：板子不是一直插着。
 - 口播与屏幕都先清洗模型当文本吐出的工具调用标记，整条回复都是标记时给「这条回复是空的，请再问一次」。
@@ -125,7 +128,10 @@ platforms:
 ```
 
 提示音文件用 `tools/make_cues.py` 生成（`approval` / `clarify` / `done` / `wake`），落在
-`~/.hermes/plugin-data/gadget/cues/`。`tools/relay_start.ps1` 的 Python 解释器取 `RELAY_PYTHONW`，
+`~/.hermes/plugin-data/gadget/cues/`。天气功能另需三个环境变量，写在 profile 的 `.env` 里
+（不进 git）：`QWEATHER_HOST`（控制台「设置」里的 API Host）、`QWEATHER_KEY`（项目管理里的 API KEY）、
+`QWEATHER_PLACE`（默认扬州；也可用 `QWEATHER_LAT` / `QWEATHER_LON` 直接指定坐标）。
+`tools/relay_start.ps1` 的 Python 解释器取 `RELAY_PYTHONW`，
 否则找用户目录下名为 `gadget-relay` 的 conda 环境（需有 `pyserial` 与 `websockets`）；`tools/relay.sh` 认 `RELAY_ENV_DIR`。
 
 ### 4. 起 relay 与验收判据

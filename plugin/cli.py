@@ -327,6 +327,28 @@ def _cmd_show(args) -> None:
     print("It shows within a few seconds while the gateway runs and the gadget is connected.")
 
 
+def _cmd_weather(args) -> None:
+    """Fetch the forecast and put it on a gadget's screen (and print it)."""
+    from . import weather
+
+    try:
+        title, body = weather.card(days=args.days)
+    except weather.WeatherError as exc:
+        sys.exit(f"weather: {exc}")
+    print(f"{title}\n{body}")
+    if args.no_card:
+        return
+    store = _store()
+    device_id = _match(store, args.device)
+    if device_id is None:
+        return
+    try:
+        card = _cards().set(title, body, ttl_s=args.ttl, target=device_id)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    print(f"\nCard queued for {args.device} ({card['ttl_s']:.0f} s on screen).")
+
+
 def setup_argparse(parser) -> None:
     subs = parser.add_subparsers(dest="gadget_command")
     subs.add_parser("devices", aliases=["ls"], help="List gadgets that have enrolled with this Hermes")
@@ -365,11 +387,17 @@ def setup_argparse(parser) -> None:
     show.add_argument("title", help="The card's title")
     show.add_argument("body", nargs="?", default="", help="The card's body")
     show.add_argument("--ttl", type=float, default=20.0, help="Seconds it stays on screen (default 20)")
+    weather = subs.add_parser("weather", help="Show the forecast on a gadget (QWeather)")
+    weather.add_argument("device", nargs="?", help="Device id or name; omit to print only")
+    weather.add_argument("--days", type=int, default=3, help="Forecast days, 1-10 (default 3)")
+    weather.add_argument("--ttl", type=float, default=300.0, help="Seconds it stays on screen (default 300)")
+    weather.add_argument("--no-card", action="store_true", help="Print the forecast, put nothing on the screen")
     parser.set_defaults(func=handle)
 
 
 _COMMANDS = {"devices": _cmd_devices, "ls": _cmd_devices, "forget": _cmd_forget, "info": _cmd_info,
-             "pair": _cmd_pair, "update": _cmd_update, "tile": _cmd_tile, "show": _cmd_show}
+             "pair": _cmd_pair, "update": _cmd_update, "tile": _cmd_tile, "show": _cmd_show,
+             "weather": _cmd_weather}
 
 
 def handle(args) -> None:

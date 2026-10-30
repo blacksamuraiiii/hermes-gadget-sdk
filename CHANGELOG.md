@@ -50,6 +50,12 @@ after it is what came from upstream and how.
 - The two-minute relay watchdog is off unless `platforms.gadget.extra.relay_watch` is true. The
   board is not always plugged in, and a restart every two minutes only churns the serial port
   when it is not; a board that stays wired can still ask for the old behaviour.
+- Weather comes from QWeather (和风天气) instead of a web search: the `gadget_weather` tool answers
+  a spoken question in one line, and `hermes gadget weather [device]` puts the same forecast on the
+  screen as a card. Current conditions, a three-day forecast and any active official warning lead
+  both; the condition text arrives already localized, which is why no code table is involved. The
+  key, host and place are read from the profile's environment (`QWEATHER_HOST`, `QWEATHER_KEY`,
+  `QWEATHER_PLACE`), so nothing here holds a secret.
 - Documentation: the moji row in `docs/hardware-validation.md` and the Chinese README describe what
   has actually been seen on the board, and the README's acceptance table matches the logging a
   release build produces.
