@@ -27,7 +27,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import signal
+import subprocess
 import sys
 import time
 
@@ -59,6 +61,11 @@ REOPEN_EVERY_S = 5.0
 REOPEN_MAX_S = 60.0
 # After this long with no port at all, say once what the fix is: a hand on the cable, not a retry.
 PORT_MISSING_HINT_S = 120.0
+# And after this long, write down what Windows thinks the device tree looks like (once per outage).
+# A hub port that failed to reset keeps a VID_0000&PID_0001/0002 placeholder that holds the port
+# until the hub or the PC is reset, so the snapshot tells "stuck port" apart from "not plugged in"
+# without asking anyone to open Device Manager.
+PNP_SNAPSHOT_S = 180.0
 WS_PATH_DEFAULT = "/gadget"
 SUB_DEFAULT = "hermes-gadget.v1"
 
@@ -188,6 +195,7 @@ class Relay:
         self.reopen_attempts = 0             # consecutive failed opens since the port was last up
         self.reopen_since: float | None = None
         self.port_missing_hinted = False
+        self.pnp_snapshot_taken = False
 
     # ---- serial -----------------------------------------------------------
     def open_serial(self) -> None:
@@ -238,6 +246,7 @@ class Relay:
         self.reopen_attempts = 0
         self.reopen_since = None
         self.port_missing_hinted = False
+        self.pnp_snapshot_taken = False
 
     async def wait_before_reopen(self, why: str, exc: Exception) -> None:
         """Count a failed open, log it once per backoff stage, and wait longer each time.
@@ -261,7 +270,47 @@ class Relay:
             LOG.warning("no board on the bus for %.0f s: if the cable is connected, Windows may have "
                         "stopped the port (device code 43) - unplug the hub's upstream cable for 3 s, "
                         "or see the USB section of README_zh.md", missing)
+        if not self.pnp_snapshot_taken and missing >= PNP_SNAPSHOT_S:
+            self.pnp_snapshot_taken = True
+            self.capture_pnp_snapshot(missing)
         await asyncio.sleep(delay)
+
+    def capture_pnp_snapshot(self, missing: float) -> None:
+        """Log what the Windows device tree says about the board and its hub ports, once per outage.
+
+        A port whose reset failed keeps a ``USB\\VID_0000&PID_0001/0002`` placeholder node that holds
+        it until the hub or the PC is reset, so this snapshot separates "the port is stuck" from
+        "the cable is out" - the two cases need different fixes and only one needs a reboot.
+        """
+        script = (
+            "$ErrorActionPreference='SilentlyContinue'; "
+            "'--- board / failed nodes ---'; "
+            "Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\VID_303A*' "
+            "-or $_.InstanceId -like 'USB\\VID_0000&PID_*' } | "
+            "ForEach-Object { $p=(Get-PnpDeviceProperty -InstanceId $_.InstanceId "
+            "-KeyName 'DEVPKEY_Device_Parent').Data; "
+            "$l=(Get-PnpDeviceProperty -InstanceId $_.InstanceId "
+            "-KeyName 'DEVPKEY_Device_LocationInfo').Data; "
+            "'  ' + $_.Status + ' | ' + $_.Problem + ' | ' + $_.InstanceId + ' | parent=' + $p "
+            "+ ' | ' + $l }; "
+            "'--- hubs ---'; "
+            "Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\ROOT_HUB*' "
+            "-or $_.InstanceId -like 'USB\\VID_*&PID_*\\MSFT*' } | "
+            "ForEach-Object { '  ' + $_.Status + ' | ' + $_.InstanceId }"
+        )
+        # Absolute path: the relay may be started from a shell whose PATH lacks System32.
+        exe = os.path.join(os.environ.get("SystemRoot") or "C:\\Windows",
+                           "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        LOG.warning("no board for %.0f s - capturing a PnP snapshot for the post-mortem", missing)
+        try:
+            out = subprocess.run([exe, "-NoProfile", "-Command", script],
+                                 capture_output=True, timeout=20)
+        except Exception as exc:  # noqa: BLE001 - a missing snapshot must not stop the retry loop
+            LOG.warning("PnP snapshot failed: %s", exc)
+            return
+        for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
+            if line.strip():
+                LOG.warning("[pnp] %s", line.strip())
 
     async def write_frame(self, ftype: int, payload: bytes = b"") -> None:
         if not self.ser:
