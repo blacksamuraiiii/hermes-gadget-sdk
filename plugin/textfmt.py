@@ -23,6 +23,9 @@ _PUNCT = {
     "\u0153": "oe", "\u0152": "OE", "\xf8": "o", "\xd8": "O", "\u0142": "l", "\u0141": "L",
 }
 
+# The CJK font draws ° and °C reads as 摄氏度, so the ASCII " deg" fold is for ascii-only boards.
+_CJK_PUNCT = {k: v for k, v in _PUNCT.items() if k != "\xb0"}
+
 _FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 _INLINE_CODE = re.compile(r"`([^`]*)`")
 _LINK = re.compile(r"!?\[([^\]]*)\]\(([^)]*)\)")
@@ -123,7 +126,28 @@ def for_device(text: str, charset: str = "ascii") -> str:
         text = fold_ascii(text)
     elif charset.replace("-", "").lower() in ("utf8", "utf_8"):
         # Keep the CJK; drop what the font cannot draw instead of showing '?'.
-        text = "".join(_PUNCT.get(ch, ch) if ch in _PUNCT else ch for ch in text)
+        # The degree sign is drawable here and reads as 摄氏度, so it must not take the
+        # ASCII fold ("22 degC" on a Chinese screen).
+        text = "".join(_CJK_PUNCT.get(ch, ch) if ch in _CJK_PUNCT else ch for ch in text)
         text = "".join(ch for ch in text if _drawable(ch))
     text = "\n".join(_SPACES.sub(" ", line).rstrip() for line in text.splitlines())
     return _BLANKS.sub("\n\n", text).strip()
+
+
+_TEMP_C = r"(?:℃|°\s*C(?![A-Za-z]))"
+_TEMP_RANGE = re.compile(
+    r"(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*[~～\-–—至到]\s*([-+]?\d+(?:\.\d+)?)\s*" + _TEMP_C)
+_TEMP_ONE = re.compile(r"(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*" + _TEMP_C)
+_TEMP_BARE = re.compile(_TEMP_C)
+
+
+def speak_celsius(text: str) -> str:
+    """Write temperatures the way a Chinese voice says them.
+
+    Hermes's spoken-text normalizer expands ``22°C`` to the English ``22 degrees Celsius``,
+    which a zh-CN voice pronounces "deg C". Ranges first, then single values, then any
+    leftover symbol. Display text is untouched: only the spoken copy goes through here.
+    """
+    text = _TEMP_RANGE.sub(lambda m: f"{m.group(1)}到{m.group(2)}摄氏度", text or "")
+    text = _TEMP_ONE.sub(lambda m: f"{m.group(1)}摄氏度", text)
+    return _TEMP_BARE.sub("摄氏度", text)

@@ -208,3 +208,18 @@ def test_audio_it_cannot_read_is_never_dropped_as_silence():
     assert audio.pcm_rms(b"") is None
     assert audio.wav_rms(b"not a wav") is None
     assert audio.utterance_rejection(b"not a wav", 2.0) is None
+
+
+def test_temperatures_are_spoken_in_chinese():
+    # Hermes's normalizer would say "degrees Celsius" and a zh voice reads it "deg C".
+    assert textfmt.speak_celsius("气温 10~22°C") == "气温 10到22摄氏度"
+    assert textfmt.speak_celsius("晴，22℃") == "晴，22摄氏度"
+    assert textfmt.speak_celsius("15 - 23°C") == "15到23摄氏度"
+    assert textfmt.speak_celsius("-5°C") == "-5摄氏度"
+    assert textfmt.speak_celsius("没有温度") == "没有温度"
+
+
+def test_a_chinese_screen_keeps_the_degree_sign():
+    assert textfmt.for_device("气温 10~22°C", "utf-8") == "气温 10~22°C"
+    # ASCII-only boards still need the fold: their font has no degree sign.
+    assert "degC" in textfmt.for_device("气温 22°C", "ascii")

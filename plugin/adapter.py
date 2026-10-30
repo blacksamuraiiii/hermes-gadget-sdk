@@ -1012,6 +1012,16 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             await self.send(chat_id, caption, metadata=metadata)
         return result
 
+    def prepare_tts_text(self, text: str) -> str:
+        """Speak temperatures in Chinese.
+
+        Hermes's normalizer expands ``22°C`` to ``22 degrees Celsius``; a zh-CN voice reads
+        that as "deg C". Convert to 摄氏度 first, then let the base cleanup run.
+        """
+        spoken = textfmt.speak_celsius(text or "")
+        base = getattr(super(), "prepare_tts_text", None)
+        return base(spoken) if base is not None else textfmt.strip_markdown(spoken)
+
     def supports_streaming_tts(self, chat_id: str, audio_format: AudioFormat) -> bool:
         session = self._session(chat_id)
         return bool(session and session.paired and session.has_speaker
