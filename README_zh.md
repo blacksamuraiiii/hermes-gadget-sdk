@@ -103,9 +103,9 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 | 熄屏后提醒 | 设备自报 `state display_sleeping:true`，播报时回 `false` 并出卡片 |
 | 唤醒命中 | `hg.wake: hit: command 0 at NN percent` + `hg: wake: ...`，屏幕进 Listening |
 | 「我在」播出 | `hg.codec: playback ended ... 58752 B played`（与 `wake.wav` 字节对应），且**播完才**出现录音帧 |
-| 唤醒后能对话 | 说完一句后 `hg: recording: end, N chunks`，宿主出回复；不再出现 `recording: still silent` |
-| 引擎在持麦 | 空闲时每 200 次 tap 一条 `hg.wake: tap: ... peak N`，`peak` 随人声起伏（不是恒 0） |
-| 空转写/静音不启回合 | 按住不到 0.5 s 或录到的是房间噪声时，设备收到 `Didn't catch that - hold the button while speaking`，`gateway.log` 无对应 inbound |
+| 唤醒后能对话 | 说完一句后 `hg: recording: end, N chunks`，宿主出回复；不开 `CONFIG_HG_WAKE_DIAG` 时不会有 `recording: still silent`（该行已编译掉） |
+| 引擎在持麦 | 开 `CONFIG_HG_WAKE_DIAG` 后：空闲时每 200 次 tap 一条 `hg.wake: tap: ... peak N`，`peak` 随人声起伏（不是恒 0）；默认构建没有这行 |
+| 空转写/静音不启回合 | 按住不到 0.5 s 或录到的是房间噪声时，设备收到「没听清，请按住按键说话」，`gateway.log` 无对应 inbound |
 | console 命令让路 | 停 relay 由 `tools/console_cmd.py` 自动处理（先停、发完再起）；判据是回复以 `@` 开头（`@ok` / `@value` / `@error`），期间无 `PermissionError(13)` |
 | 字号 | `gadget_devices` 上报 `text_cols=26, text_rows=5` |
 
