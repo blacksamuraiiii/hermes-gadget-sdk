@@ -1,4 +1,4 @@
-# Hermes Gadget 中文说明（moji-0.2：语音唤醒打通）
+# Hermes Gadget 中文说明（moji-0.2 已发布；moji-0.3 在 `feat/moji-0.3` 进行中）
 
 本仓库是 [Adolanium/hermes-gadget-sdk](https://github.com/Adolanium/hermes-gadget-sdk) 的 fork，
 把一块 ESP32-S3 圆屏小板（`movecall-moji-esp32s3`，墨迹板）改造成 **Hermes Agent 的消息提醒屏**：
@@ -83,7 +83,7 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 2. **装插件**：把 `plugin/` 放到 `~/.hermes/plugins/gadget`（复制或符号链接）。
 3. **写配置**（`platforms.gadget`）：`enabled: true`、`home_channel`（设备 id），
    `extra` 里 `voice: true`（唤醒后要能对话）、`relay_start` / `relay_stop` 指向
-   `tools/relay_start.ps1` / `relay_stop.ps1`。提示音文件用 `hpy tools/make_cues.py` 生成。
+   `tools/relay_start.ps1` / `relay_stop.ps1`。提示音文件用 `tools/make_cues.py` 生成。
 4. **起 relay**：WSL 侧 `tools/relay.sh start`（无窗口），或让 gateway 自己拉。
 5. **看判据**：`tools/relay.log` 出现 `serial COM5 open` 与 `hg: online (paired)` 即链路通。
 
@@ -136,17 +136,48 @@ hub 开 operator WS 角色）比较过、未落地，决定先不做。
 
 ---
 
-## 五、下一步
+## 五、下一步（moji-0.3 收尾）
 
-- **唤醒阈值标定**：目前只有散点样本（`你好小墨` 中位 73%、`小墨小墨` 中位 46%），要按 0.5 / 1 / 2 米
-  各 10 遍、安静与噪声两档采完再定 15/20/25；「小墨小墨」是可重复词，区分度天然低，考虑换成
-  「小墨同学」这类不重复的说法。
-- **清诊断**：`port_wake.cpp` 的 `threshold = 0.05f`（临时值）要恢复成
-  `CONFIG_HG_WAKE_THRESHOLD / 100`；tap 峰值、feeds、`mic: peak`、`recording: ... silent`
-  这些 bring-up 日志要删，只留 `hit:`。
-- **开发板独立 profile**：`gadget` profile 已建好（模型/TTS/STT 与 default 一致、插件只留
-  gadget/sensevoice/memory、技能空目录），尚待 `gateway.profile_routes` 把设备指过去并重启验证。
-- 进程外投递（`standalone_sender_fn` + spool）：搁置，等需求明确再做。
+0.3 的全部改动在 `feat/moji-0.3`（`PROJECT_VER=0.3.0`），未发版。分三块记。
+
+### 1. 已落地、待真机验证
+
+| 项 | 提交 | 还差什么 |
+|---|---|---|
+| 唤醒引擎跟着麦克风走：播报结束后不必等回合落定就能再唤醒 | `9f1a175` | 连续两次唤醒实测 |
+| 唤醒阈值恢复 `CONFIG_HG_WAKE_THRESHOLD/100`，日志打印实际值 | `af17f3c` | 标定数据（见下） |
+| bring-up 诊断收进 `CONFIG_HG_WAKE_DIAG`，默认关闭 | `d23150c` | 默认构建下只剩 `hit:` |
+| tap 持麦期间不再投 Mic 事件 | `efca272` | 空闲期无 `event queue full` |
+| relay 恢复串行化、帧转发异常兜底、开连状态补齐 | `4c04bb3` | 拔插 120 s 内自愈 |
+| `hermes gadget show`：进程外推卡片，不起回合 | `9139eac` | 脚本推卡 2 s 内上屏 |
+| 无 dashboard 的板也显示「等待你确认」 | `60966bc` | 主机发起需批准的命令 → 出卡片 |
+| 温度读作「摄氏度」，中文屏保留 `°`（ASCII 屏仍折成 `deg`） | `8cbea8c` | 烧录后听感 + 屏幕各看一眼 |
+| 网关重启期间不再弹 `connect timeout`（连续 3 次未握手才报） | `7a2f493` | **需重新烧录固件才生效** |
+
+### 2. 未做
+
+- **唤醒阈值标定（发版阻断）**：目前只有散点样本（`你好小墨` 中位 73%、`小墨小墨` 中位 46%），
+  要按 0.5 / 1 / 2 米各 10 遍、安静与噪声两档采完再定 15/20/25；「小墨小墨」是可重复词，
+  区分度天然低，考虑换「小墨同学」这类不重复的说法。产出落 `notes/验收-唤醒阈值扫描.md`。
+- **发布资产**：`firmware/releases/v0.3/`（README + `SHA256SUMS` + 分区声明）尚未建。
+- **两处小修**：`plugin/notify.py` 的冷却仍按 cue 全局去重（不同 `request_id` 在 4 s 内会被吞）；
+  `firmware/esp32/main/port_wake.cpp` 的 `wake_attach` 失败路径没有 cleanup。
+- **pytest 分类口径**：`notes/验收-pytest分类.md` 记的是当前基线（7 failed），
+  与立项时写的 18 项不是同一批，发版说明按实际基线写。
+- 进程外投递（`standalone_sender_fn` + spool）：仍搁置，等需求明确再做。
+
+### 3. 与上游的关系（为什么 GitHub 显示「落后 284」）
+
+本 fork 与上游的分叉策略是逐条 `git cherry-pick -x`，**不整体 merge 上游 `main`**
+（字体层、adapter、板级三处大分叉）。所以「284 commits behind」衡量的是分叉深度，不是漏同步：
+
+- 已评估到 upstream `24d21a9`（2026-10-29）；本地实测 `behind 284 / ahead 85`。
+- 自上次同步点 `0fdb676`（10-26）起，上游新增 45 个非合并提交（plugin 13、`firmware/core` 10）。
+- 其中与本项目共享层相关且可能值得移植的只有三条：`f481640` + `2075171` + `ea205f4`
+  （hello 播报 `caps.speaker.buffer_ms` + 插件自适应提前量）——USB 直链收益有限，
+  按原计划「随插件同步时顺带做」，不单独排期。
+- 其余属彩色脸/眨眼/帧图（本项目不做 profile 切换）、camera PNG（本板无摄像头）、
+  Tailscale 与 PSRAM TCP 窗口（结论已写进 `CHANGELOG.md` 的 Skip 段）。
 
 计划、决策与实测记录在 [notes/](notes/README.md)：现状入口 `notes/README.md`，决策依据 `notes/决策-台账.md`，0.1 实测 `notes/验收-0.1实测记录.md`，本机环境与坑 `notes/环境-本机工具链与坑.md`。
 
