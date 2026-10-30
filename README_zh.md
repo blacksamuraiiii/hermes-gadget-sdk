@@ -1,10 +1,10 @@
-# Hermes Gadget 中文说明（moji-0.2：语音唤醒打通）
+# Hermes Gadget 中文说明
 
 本仓库是 [Adolanium/hermes-gadget-sdk](https://github.com/Adolanium/hermes-gadget-sdk) 的 fork，
 把一块 ESP32-S3 圆屏小板（`movecall-moji-esp32s3`，墨迹板）改造成 **Hermes Agent 的消息提醒屏**：
 不需要按键说话，任务需要人介入或跑完时，屏幕出卡片、喇叭出提示音。
 
-上游英文文档见 [README.md](README.md) 与 [docs/](docs/)；本文件只写本项目第一阶段的改动、用法与边界。
+上游英文文档见 [README.md](README.md) 与 [docs/](docs/)；本文件只写本项目改动、用法与边界。
 
 ---
 
