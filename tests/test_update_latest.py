@@ -25,14 +25,17 @@ def github(tmp_path, monkeypatch):
     """Serves <root>/latest/download/manifest.json and <root>/download/v<version>/<file>."""
     root = tmp_path / "releases"
 
-    def publish(version="0.2.0", board=BOARD, *, corrupt=False):
+    def publish(version="0.2.0", board=BOARD, *, corrupt=False, tag=None):
         app = fake_image(board=board, version=version, size=40_000)
         name = f"hermes-gadget-esp32s3-touch-amoled-175-{version}-app.bin"
-        (root / "download" / f"v{version}").mkdir(parents=True, exist_ok=True)
-        (root / "download" / f"v{version}" / name).write_bytes(app + (b"x" if corrupt else b""))
+        folder = tag or f"v{version}"
+        (root / "download" / folder).mkdir(parents=True, exist_ok=True)
+        (root / "download" / folder / name).write_bytes(app + (b"x" if corrupt else b""))
         manifest = {"version": version, "builds": [{
             "board": "esp32s3-touch-amoled-175", "image_board": board, "title": "Waveshare ESP32-S3-Touch-AMOLED-1.75",
             "app": {"path": name, "size": len(app), "sha256": hashlib.sha256(app).hexdigest()}}]}
+        if tag:
+            manifest["tag"] = tag  # a fork release is tagged moji-0.X while the firmware says 0.X.0
         (root / "latest" / "download").mkdir(parents=True, exist_ok=True)
         (root / "latest" / "download" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return app
@@ -144,6 +147,14 @@ def test_no_release_or_no_network_says_so(github, store, monkeypatch):
     with pytest.raises(SystemExit) as stop:
         _update()
     assert "Couldn't reach" in str(stop.value)
+
+
+def test_a_manifest_with_a_tag_downloads_from_that_tag(github, store, capsys):
+    """A fork release is tagged moji-0.X while the firmware reports 0.X.0: the tag is the path."""
+    app = github("0.3.0", tag="moji-0.3")
+    _update()
+    assert _staged(store) == app
+    assert "Staged firmware 0.3.0" in capsys.readouterr().out
 
 
 def test_an_image_and_latest_are_exclusive(store):
