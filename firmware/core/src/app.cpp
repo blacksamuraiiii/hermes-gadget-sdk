@@ -977,13 +977,18 @@ void App::on_button(Button button, bool pressed) {
 }
 
 // The wake engine owns the microphone whenever nothing else does: it must step back for
-// a recording, stay quiet while a turn thinks or answers and while the answer plays back,
-// and be listening again as soon as the device is idle. Deriving that from the state the
-// app already has covers every way back to Idle - a finished turn, a cancel, a timeout, a
-// dropped link - instead of resuming at each call site, which is how a cancelled recording
-// used to leave the engine stopped until the next one.
+// a recording and stay quiet while the speaker plays (it would otherwise hear the answer and
+// wake itself), and be listening again the moment both are free.
+//
+// "Idle" is deliberately NOT part of that test. A turn that has finished playing but has not
+// settled yet - Hermes may still send the rest of the reply - is exactly when the user says the
+// wake word again, and on the moji board it left the engine off for up to 45 s (kRespondingTimeoutMs)
+// after the last sound, or 180 s if the host went quiet mid-turn (kThinkingTimeoutMs). Measured on
+// the board 2026-10-30: playback ended 12:42:35, engine resumed 12:43:06. What a hit does in those
+// states is on_wake_hit's business, not the microphone's: it still refuses to open a turn unless
+// the app is idle.
 void App::update_wake() {
-  const bool wants_mic = mode_ == Mode::Idle && !speaking() && hardware_check_ == HardwareCheck::None;
+  const bool wants_mic = mode_ != Mode::Listening && !speaking() && hardware_check_ == HardwareCheck::None;
   if (wants_mic == wake_running_) return;
   wake_running_ = wants_mic;
   if (wants_mic)

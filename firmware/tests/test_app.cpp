@@ -3124,8 +3124,10 @@ TEST("app: a turn that goes quiet leaves Responding by itself") {
 
 // --- The wake seam: one owner of the microphone at a time ---------------------
 // A cancelled recording used to leave the engine stopped until the next one, and ending
-// a recording used to resume it while the device was still thinking or playing the reply,
-// so the engine heard the device's own voice. Both are visible here.
+// a recording used to resume it while the reply was still playing, so the engine heard the
+// device's own voice. Both are visible here. The engine follows the microphone, not the
+// turn: it runs while a turn thinks (nobody else wants the samples) and steps back only for
+// a recording or the speaker.
 
 TEST("wake: the engine holds the microphone while idle and hands it over to a recording") {
   g_wake = WakeStandIn{};
@@ -3142,7 +3144,11 @@ TEST("wake: the engine holds the microphone while idle and hands it over to a re
   r.app.on_button(hg::Button::Talk, false);
   CHECK(r.app.screen() == hg::Screen::Thinking);
   r.advance(200);
-  CHECK(!g_wake.running);  // the recording ended, the turn still runs: stay quiet
+  // The recording ended and the speaker is quiet: the engine takes the microphone back even
+  // though the turn is still running. Waiting for Idle here cost up to 45 s of deafness after
+  // the answer had already finished playing (moji board, 2026-10-30).
+  CHECK(g_wake.running);
+  CHECK_EQ(g_wake.pauses, 1);
 }
 
 TEST("wake: a cancelled recording gives the microphone back") {
