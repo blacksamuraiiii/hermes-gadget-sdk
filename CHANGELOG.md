@@ -32,6 +32,24 @@ after it is what came from upstream and how.
   of seconds, and the card clears itself when the TTL runs out.
 - A board that draws no dashboard (`caps.dashboard` 0, which is what this board reports) now gets
   a card when Hermes waits for an approval, once per waiting session.
+- The wake engine runs whenever the microphone is free instead of only while the turn is `Idle`.
+  A reply that had played but whose turn had not settled left a 30-second window where the wake
+  word did nothing; the hit guard still requires an idle turn, so nothing spurious opens one.
+- A connect attempt that times out during a gateway restart no longer puts `connect timeout` on
+  the screen: three misses in a row are reported, the first two only retry in the background. A
+  restart, and especially a draining one, outlives the ten-second window by design.
+- Temperatures are spoken in Chinese. Hermes's spoken-text normalizer expands `22°C` to
+  `22 degrees Celsius`, which a zh-CN voice reads as "deg C"; the reply is now read as
+  `22摄氏度`, while a Chinese screen keeps `22°C` (ASCII-only boards still fold it to `deg`).
+- Reminders are deduplicated by request id instead of by cue. Two different approvals seconds
+  apart used to cost the second one its card and cue; the same request reported twice is still
+  one reminder, and an event with no id still dedupes on its cue.
+- The wake engine releases what it built when start-up fails (model list, AFE, MultiNet, rate
+  converter, sample queue) instead of leaving the first failure's PSRAM and the model partition's
+  SPIFFS handle held for the rest of the boot.
+- The two-minute relay watchdog is off unless `platforms.gadget.extra.relay_watch` is true. The
+  board is not always plugged in, and a restart every two minutes only churns the serial port
+  when it is not; a board that stays wired can still ask for the old behaviour.
 - Documentation: the moji row in `docs/hardware-validation.md` and the Chinese README describe what
   has actually been seen on the board, and the README's acceptance table matches the logging a
   release build produces.

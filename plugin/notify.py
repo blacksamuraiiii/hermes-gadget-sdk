@@ -47,7 +47,7 @@ CUES: dict[str, dict[str, Any]] = {
 # Hermes reports which kind of block this is; unknown kinds are not announced.
 KIND_CUES = {"approval": "approval", "sudo": "sudo", "clarify": "clarify"}
 
-COOLDOWN_S = 4.0        # the same cue twice inside this window is one reminder
+COOLDOWN_S = 4.0        # the same request twice inside this window is one reminder
 MIN_TURN_S = 45.0       # a turn shorter than this is not worth a "done"
 
 
@@ -149,10 +149,13 @@ class ReminderBridge:
         with self._lock:
             if not self._enabled:
                 return
-            stamp = f"{cue}:{key}"
-            if now - self._last.get(stamp, -1e9) < COOLDOWN_S or now - self._last.get(cue, -1e9) < COOLDOWN_S:
+            # Dedupe by request id, not by cue: two different approvals seconds apart are two
+            # things to look at, and the old cue-wide window swallowed the second one's card and
+            # cue. An event with no id has nothing to compare, so its cue stands in for one.
+            stamp = f"{cue}:{key}" if key else cue
+            if now - self._last.get(stamp, -1e9) < COOLDOWN_S:
                 return
-            self._last[stamp] = self._last[cue] = now
+            self._last[stamp] = now
             if len(self._last) > 64:  # a long session must not grow this without bound
                 self._last = {k: v for k, v in self._last.items() if now - v < 600}
         adapter = _adapter()

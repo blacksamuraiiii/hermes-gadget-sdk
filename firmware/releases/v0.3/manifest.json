@@ -15,13 +15,13 @@
       "psram": "octal",
       "image": {
         "path": "hermes-gadget-movecall-moji-esp32s3-0.3.0.bin",
-        "size": 2330256,
-        "sha256": "40e35895d73aaa6d03d7f90acf6cb62e525df33c2588047d687feb56ea7f5e29"
+        "size": 2330880,
+        "sha256": "fd6e6371deddc21ed188e2e81d2fbf1222cb617327895705ed92139054857a6f"
       },
       "app": {
         "path": "hermes-gadget-movecall-moji-esp32s3-0.3.0-app.bin",
-        "size": 2199184,
-        "sha256": "c908f394e7f0559847b2d81a3e78a1ca047019592457a7e94891181e31a3b014"
+        "size": 2199808,
+        "sha256": "900c1e600eb5b0c97bf40d3215a090d0376997eb23e317c21dfc3aad8b70c42b"
       },
       "settings": {
         "offset": 36864,

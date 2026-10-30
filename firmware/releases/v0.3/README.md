@@ -15,6 +15,7 @@
 | bring-up 诊断日志收进 `CONFIG_HG_WAKE_DIAG`，默认关闭 | `d23150c` |
 | tap 持麦期间不再投 Mic 事件（空闲期不再刷 `event queue full`） | `efca272` |
 | 网关重启期间不再弹 `connect timeout`：连续 3 次未握手才报错 | `7a2f493` |
+| 唤醒引擎启动失败时释放已建的模型/AFE/队列，不再把 PSRAM 和 SPIFFS 句柄留到下次重启 | 本次提交 |
 
 ## 刷写（Windows 侧，USB 直连）
 
@@ -84,9 +85,9 @@ hg.wake: hit: command 0 at NN percent
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `hermes_gadget.bin` | 2,199,184 B | app（槽 `0x3e0000`，余 46%） |
-| `hermes-gadget-movecall-moji-esp32s3-0.3.0.bin` | 2,330,256 B | 整片合并镜像，从 `0x0` 写 |
-| `hermes-gadget-movecall-moji-esp32s3-0.3.0-app.bin` | 2,199,184 B | 只刷 app 用（与 `hermes_gadget.bin` 同内容） |
+| `hermes_gadget.bin` | 2,199,808 B | app（槽 `0x3e0000`，余 46%） |
+| `hermes-gadget-movecall-moji-esp32s3-0.3.0.bin` | 2,330,880 B | 整片合并镜像，从 `0x0` 写 |
+| `hermes-gadget-movecall-moji-esp32s3-0.3.0-app.bin` | 2,199,808 B | 只刷 app 用（与 `hermes_gadget.bin` 同内容） |
 | `srmodels.bin` | 2,203,819 B | esp-sr 模型（mn5q8_cn），只有整片刷才需要 |
 | `partition-table.bin` | 3,072 B | 与 0.2 相同（`ota_0` 0x20000/0x3e0000、`model` 0x800000） |
 | `ota_data_initial.bin` | 8,192 B | 指向 `ota_0` |
