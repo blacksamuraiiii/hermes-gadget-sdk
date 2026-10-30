@@ -239,7 +239,13 @@ void CodecMic::task(void* arg) {
         ESP_LOGI(TAG, "mic: peak %d, capturing %d", peak, static_cast<int>(mic->capturing_.load()));
       }
 #endif
-      if (MicTap tap = mic_tap()) tap(chunk, kMicChunk);  // the wake engine, when it holds the mic
+      if (MicTap tap = mic_tap()) {
+        // The wake engine holds the microphone only while the app is idle, where it drops Mic
+        // events anyway. Posting them would allocate and copy a chunk 100 times a second into a
+        // 96-deep queue that real audio and control events need.
+        tap(chunk, kMicChunk);
+        return;
+      }
       events::post(EventType::Mic, chunk, kMicChunk * sizeof(int16_t));
     }
     void wait() { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)); }
