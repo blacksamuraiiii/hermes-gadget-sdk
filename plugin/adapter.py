@@ -70,6 +70,7 @@ UPDATE_POLL_S = 3.0           # how often staged firmware ('hermes gadget update
 RELAY_WATCH_S = 120.0         # how often the configured USB relay is checked and restarted
 DASHBOARD_POLL_S = 2.0        # how often tiles ('hermes gadget tile') and expiries are looked at
 CARD_POLL_S = 2.0             # how often a card from 'hermes gadget show' is looked for
+WAITING_CARD_S = 45.0         # how long the 'waiting for you' card stays on a board without a dashboard
 DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as one dashboard
 # Trigger text for Hermes's unauthorized-DM flow. Never reaches the agent while the
 # device is unpaired; if approval races it, it is a cheap read-only command.
@@ -211,6 +212,7 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         self._cards: Optional[dashboard.CardStore] = None
         self._card_shown: Optional[str] = None
         self._card_task: Optional[asyncio.Task] = None
+        self._waiting_shown: Dict[str, set] = {}
         self._dashboard_task: Optional[asyncio.Task] = None
         self._dashboard_wake: Optional[asyncio.Event] = None
         self._board_unsubscribe = None
@@ -459,12 +461,14 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         """Show cards pushed from outside a turn ('hermes gadget show'), once each.
 
         The CLI writes card.json and this polls it, so a script, a hook or a cron job can put a
-        line on the screen without starting a turn or spending a token.
+        line on the screen without starting a turn or spending a token. The same tick keeps boards
+        that draw no dashboard told that Hermes waits for an approval.
         """
         while True:
             await asyncio.sleep(CARD_POLL_S)
             if self._hub is None:
                 continue
+            await self._remind_waiting()
             if self._cards is None:
                 continue
             try:
@@ -476,6 +480,27 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
                 continue
             self._card_shown = card["id"]
             await self._deliver_card(card)
+
+    async def _remind_waiting(self) -> None:
+        """Card 'waiting for you' on boards that draw no dashboard, once per waiting session."""
+        if self._hub is None:
+            return
+        waiting = {row["id"] for row in dashboard.BOARD.sessions() if row.get("state") == "waiting"}
+        for session in list(self._hub.sessions.values()):
+            if not session.paired or session.closed or session.dashboard_version >= 1:
+                continue  # a dashboard already carries the waiting row
+            seen = self._waiting_shown.setdefault(session.device_id, set())
+            fresh = waiting - seen
+            seen &= waiting  # one that left 'waiting' can card again next time
+            if not fresh:
+                continue
+            title = textfmt.for_device("等待你确认", session.charset) or "Waiting for you"
+            body = textfmt.for_device("在主机上批准或拒绝", session.charset) or "Approve or deny on the host"
+            try:
+                await session.show_card(title, body, ttl_s=WAITING_CARD_S)
+                logger.info("[%s] waiting card on %s (%d session(s))", self.name, session.device_id, len(fresh))
+            except Exception as exc:  # noqa: BLE001 - one device must not stop the others
+                logger.debug("[%s] waiting card failed on %s: %s", self.name, session.device_id, exc)
 
     async def _deliver_card(self, card: dict) -> None:
         if self._hub is None:
