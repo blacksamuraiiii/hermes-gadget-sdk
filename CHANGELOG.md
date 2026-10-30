@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### This fork (moji)
 
@@ -61,6 +61,8 @@ Left out, and why:
 - Installer site dependency bumps: unrelated to this board.
 - 32 KB TCP windows on PSRAM boards (upstream `e627510`, v0.4.1): it only affects the lwIP/Wi-Fi path, and this board talks over USB. Taken when Wi-Fi comes back.
 - Tailscale tailnet reachability (upstream `bfabbe4`, v0.4.1): off on every board, and it solves the same problem as this fork's USB relay. Revisit only if the board has to work without a USB host, where it is a better answer than the USB-NCM bridge that was rejected on 2026-10-23.
+
+## Unreleased
 
 ### Hermes plugin
 
