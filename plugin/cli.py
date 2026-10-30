@@ -304,6 +304,29 @@ def _cmd_tile(args) -> None:
             print(f"{tile['id']:<16} {tile['label']:<16} {tile['value']:<16} {tile.get('state', '-')}")
 
 
+def _cards():
+    from plugins.plugin_storage import plugin_data_dir
+
+    from .dashboard import CardStore
+
+    return CardStore(plugin_data_dir("gadget"))
+
+
+def _cmd_show(args) -> None:
+    """Put a card on a gadget's screen without starting a turn."""
+    store = _store()
+    device_id = _match(store, args.device)
+    if device_id is None:
+        return
+    try:
+        card = _cards().set(args.title, args.body or "", ttl_s=args.ttl, target=device_id)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    shown = card["title"] or card["body"]
+    print(f"Card queued for {args.device}: {shown} ({card['ttl_s']:.0f} s on screen).")
+    print("It shows within a few seconds while the gateway runs and the gadget is connected.")
+
+
 def setup_argparse(parser) -> None:
     subs = parser.add_subparsers(dest="gadget_command")
     subs.add_parser("devices", aliases=["ls"], help="List gadgets that have enrolled with this Hermes")
@@ -337,11 +360,16 @@ def setup_argparse(parser) -> None:
     tile_clear.add_argument("name", nargs="?", help="The tile to remove")
     tile_clear.add_argument("--all", action="store_true", help="Remove every tile")
     tile_subs.add_parser("list", help="Show the tiles")
+    show = subs.add_parser("show", help="Put a card on a gadget's screen without starting a turn")
+    show.add_argument("device", help="Device id or name")
+    show.add_argument("title", help="The card's title")
+    show.add_argument("body", nargs="?", default="", help="The card's body")
+    show.add_argument("--ttl", type=float, default=20.0, help="Seconds it stays on screen (default 20)")
     parser.set_defaults(func=handle)
 
 
 _COMMANDS = {"devices": _cmd_devices, "ls": _cmd_devices, "forget": _cmd_forget, "info": _cmd_info,
-             "pair": _cmd_pair, "update": _cmd_update, "tile": _cmd_tile}
+             "pair": _cmd_pair, "update": _cmd_update, "tile": _cmd_tile, "show": _cmd_show}
 
 
 def handle(args) -> None:

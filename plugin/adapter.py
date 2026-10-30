@@ -69,6 +69,7 @@ PAIRING_GRACE_S = 6.0
 UPDATE_POLL_S = 3.0           # how often staged firmware ('hermes gadget update') is looked for
 RELAY_WATCH_S = 120.0         # how often the configured USB relay is checked and restarted
 DASHBOARD_POLL_S = 2.0        # how often tiles ('hermes gadget tile') and expiries are looked at
+CARD_POLL_S = 2.0             # how often a card from 'hermes gadget show' is looked for
 DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as one dashboard
 # Trigger text for Hermes's unauthorized-DM flow. Never reaches the agent while the
 # device is unpaired; if approval races it, it is a cheap read-only command.
@@ -207,6 +208,9 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         self._reminder_min_turn_s = float(extra.get("reminder_min_turn_s") or notify.MIN_TURN_S)
         self._cue_cache: Dict[Tuple[str, int], bytes] = {}
         self._tiles: Optional[dashboard.TileStore] = None
+        self._cards: Optional[dashboard.CardStore] = None
+        self._card_shown: Optional[str] = None
+        self._card_task: Optional[asyncio.Task] = None
         self._dashboard_task: Optional[asyncio.Task] = None
         self._dashboard_wake: Optional[asyncio.Event] = None
         self._board_unsubscribe = None
@@ -330,6 +334,9 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             self._dashboard_wake = asyncio.Event()
             self._board_unsubscribe = dashboard.BOARD.subscribe(self._board_changed)
             self._dashboard_task = asyncio.create_task(self._watch_dashboard())
+        # Cards pushed from outside a turn work on any board, dashboard or not.
+        self._cards = dashboard.CardStore(plugin_data_dir(PLATFORM_NAME))
+        self._card_task = asyncio.create_task(self._watch_cards())
         self._mark_connected()
         notify.BRIDGE.configure(enabled=self._reminders_on, min_turn_s=self._reminder_min_turn_s)
         self._wire_plugin_handlers(None)
@@ -342,10 +349,12 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if self._board_unsubscribe:
             self._board_unsubscribe()
             self._board_unsubscribe = None
-        for task in (self._watch_task, self._update_task, self._dashboard_task, self._relay_task):
+        for task in (self._watch_task, self._update_task, self._dashboard_task, self._relay_task,
+                     self._card_task):
             if task:
                 task.cancel()
         self._watch_task = self._update_task = self._dashboard_task = self._relay_task = None
+        self._card_task = None
         if self._hub:
             await self._hub.stop()
             self._hub = None
@@ -445,6 +454,46 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
                 await self._push_dashboard()
             except Exception as exc:
                 logger.debug("[%s] dashboard update failed: %s", self.name, exc)
+
+    async def _watch_cards(self) -> None:
+        """Show cards pushed from outside a turn ('hermes gadget show'), once each.
+
+        The CLI writes card.json and this polls it, so a script, a hook or a cron job can put a
+        line on the screen without starting a turn or spending a token.
+        """
+        while True:
+            await asyncio.sleep(CARD_POLL_S)
+            if self._hub is None:
+                continue
+            if self._cards is None:
+                continue
+            try:
+                card = self._cards.read()
+            except Exception as exc:  # noqa: BLE001 - a bad file must not stop the poll
+                logger.debug("[%s] card file unreadable: %s", self.name, exc)
+                continue
+            if card is None or card["id"] == self._card_shown:
+                continue
+            self._card_shown = card["id"]
+            await self._deliver_card(card)
+
+    async def _deliver_card(self, card: dict) -> None:
+        if self._hub is None:
+            return
+        target = card.get("target")
+        title, body = str(card.get("title") or ""), str(card.get("body") or "")
+        try:
+            ttl_s = float(card.get("ttl_s") or 20.0)
+        except (TypeError, ValueError):
+            ttl_s = 20.0
+        for session in list(self._hub.sessions.values()):
+            if not session.paired or session.closed or (target and session.device_id != target):
+                continue
+            try:
+                await session.show_card(title, body, ttl_s=ttl_s)
+                logger.info("[%s] card shown on %s: %s", self.name, session.device_id, title or body)
+            except Exception as exc:  # noqa: BLE001 - one device must not stop the others
+                logger.warning("[%s] card not shown on %s: %s", self.name, session.device_id, exc)
 
     async def _push_dashboard(self, only: Optional[DeviceSession] = None) -> None:
         if self._hub is None or self._tiles is None:
