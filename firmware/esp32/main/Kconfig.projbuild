@@ -271,4 +271,15 @@ menu "Hermes Gadget"
         default "xiao mo xiao mo"
         depends on HG_WAKE_MULTINET
 
+    config HG_WAKE_DIAG
+        bool "Wake word bring-up diagnostics (tap stats, mic peak, silent-turn warnings)"
+        default n
+        depends on HG_WAKE_MULTINET
+        help
+            Prints the numbers bring-up needed: the tap's call/sample/peak counters, the
+            microphone's peak every 100 chunks, and a warning when a listening turn records
+            silence. Off by default so a release image carries none of it and the relay log
+            keeps only `hit:` and the lifecycle lines; turn it on when the wake path has to
+            be measured. Adds no code to the release build (the logs are compiled out).
+
 endmenu

@@ -227,8 +227,9 @@ void CodecMic::task(void* arg) {
       return true;
     }
     void deliver(const int16_t* chunk) {
-      // TEMPORARY (bring-up): the ADC hands back zeros for the first seconds of a turn opened by
-      // the wake word, so show what the read side really returns. Drop once this is settled.
+      // Bring-up only: the ADC handed back zeros for the first seconds of a turn opened by the
+      // wake word. Kept behind HG_WAKE_DIAG so a release image carries no per-chunk logging.
+#if defined(HG_WAKE_DIAG)
       if (++mic->dbg_chunks_ % 100 == 0) {
         int peak = 0;
         for (size_t i = 0; i < kMicChunk; ++i) {
@@ -237,6 +238,7 @@ void CodecMic::task(void* arg) {
         }
         ESP_LOGI(TAG, "mic: peak %d, capturing %d", peak, static_cast<int>(mic->capturing_.load()));
       }
+#endif
       if (MicTap tap = mic_tap()) tap(chunk, kMicChunk);  // the wake engine, when it holds the mic
       events::post(EventType::Mic, chunk, kMicChunk * sizeof(int16_t));
     }

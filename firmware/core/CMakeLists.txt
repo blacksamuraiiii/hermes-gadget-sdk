@@ -47,6 +47,11 @@ endif()
 if(ESP_PLATFORM)
   idf_component_register(SRCS ${HG_CORE_SOURCES} INCLUDE_DIRS include third_party/qrcode)
   target_compile_definitions(${COMPONENT_LIB} PUBLIC HG_FONT_CJK=${HG_FONT_CJK})
+  # Kconfig: Wake word bring-up diagnostics. Core is portable and sees no Kconfig on a host
+  # build, so the option reaches it as a define; a release build leaves it unset.
+  if(CONFIG_HG_WAKE_DIAG)
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC HG_WAKE_DIAG=1)
+  endif()
   return()
 endif()
 

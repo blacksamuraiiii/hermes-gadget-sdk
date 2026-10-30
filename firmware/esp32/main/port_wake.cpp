@@ -72,6 +72,7 @@ void on_mic(const int16_t* samples, size_t count) {
   }
   size_t sent = 0;
   if (produced) sent = xStreamBufferSend(g_queue, g_tap_out, produced * sizeof(int16_t), 0);
+#if defined(HG_WAKE_DIAG)
   int peak = 0;
   for (size_t i = 0; i < count; ++i) {
     const int v = samples[i] < 0 ? -samples[i] : samples[i];
@@ -87,6 +88,9 @@ void on_mic(const int16_t* samples, size_t count) {
              static_cast<unsigned>(xStreamBufferSpacesAvailable(g_queue)));
     g_tap_peak = 0;
   }
+#else
+  (void)sent;  // only the diagnostics print it
+#endif
 }
 
 void report_hit() {
@@ -125,9 +129,11 @@ void task(void*) {
       }
       continue;
     }
+#if defined(HG_WAKE_DIAG)
     if (++g_feeds % 200 == 0) {
       ESP_LOGI(TAG, "feeds %u", static_cast<unsigned>(g_feeds));
     }
+#endif
     // One fetch per feed: the frame just queued is what comes back, and a pause does not have
     // to wait out a blocking fetch in the AFE.
     afe_fetch_result_t* fetched = g_afe->fetch_with_delay(g_afe_data, pdMS_TO_TICKS(50));

@@ -1120,12 +1120,15 @@ void App::on_mic_samples(const int16_t* samples, size_t count) {
   }
   if (mode_ != Mode::Listening || count == 0) return;
   level_ = level_percent(rms(samples, count));
-  // TEMPORARY (bring-up): a turn opened by the wake word recorded nothing, so count what
-  // arrives and how loud it is. Drop once the hand-over is proven.
-  if (++listen_chunks_ % 50 == 0 && level_ == 0) {
+  ++listen_chunks_;  // finish_listening() reads it to tell "no audio at all" from a silent turn
+#if defined(HG_WAKE_DIAG)
+  // Bring-up only: a turn opened by the wake word once recorded nothing, so say so while it
+  // is still recording. A release build compiles this out.
+  if (listen_chunks_ % 50 == 0 && level_ == 0) {
     log(LogLevel::Warn, "recording: still silent after " + std::to_string(listen_chunks_) +
                             " chunks, the microphone is not delivering");
   }
+#endif
   size_t off = 0;
   while (off < count) {
     size_t n = std::min(kMicChunkSamples, count - off);
