@@ -16,7 +16,12 @@ PS='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 # location, so a clone works wherever it sits. The relay's Python lives in a
 # conda env on the Windows side; point RELAY_ENV_DIR at it (Windows syntax), e.g.
 #   export RELAY_ENV_DIR='C:\Users\<you>\miniconda3\envs\gadget-relay'
-: "${RELAY_ENV_DIR:=${USERPROFILE:-}/miniconda3/envs/gadget-relay}"
+# Unset, it is derived from the Windows user profile: WSL has no USERPROFILE, so
+# asking PowerShell for it is the only default that resolves from this side.
+if [ -z "${RELAY_ENV_DIR:-}" ]; then
+  WIN_PROFILE="$("$PS" -NoProfile -Command '$env:USERPROFILE' | tr -d '\r\n')"
+  RELAY_ENV_DIR="$WIN_PROFILE\\miniconda3\\envs\\gadget-relay"
+fi
 ENV_DIR="${RELAY_ENV_DIR//\//\\}"
 WIN_DIR="$(wslpath -w "$HERE" 2>/dev/null || echo "$HERE")"
 ARGS="'-u','usb_relay.py','--target','ws://127.0.0.1:8765','--path','/gadget','--log-level','INFO','--log-file','relay.log'"
