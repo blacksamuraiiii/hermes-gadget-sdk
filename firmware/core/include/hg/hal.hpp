@@ -35,6 +35,9 @@ struct DisplayInfo {
   // An OLED/AMOLED panel: unlit pixels draw no power, so the background is
   // true black instead of the near-black used on backlit LCDs.
   bool emissive = false;
+  // Most body lines a text screen may use. 0 keeps the layout's own count; a small
+  // round panel caps it so the last line is not swallowed by the bezel.
+  uint8_t body_rows_cap = 0;
 };
 
 // A full-frame RGB565 framebuffer owned by the port (PSRAM on hardware).

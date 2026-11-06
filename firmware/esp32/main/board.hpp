@@ -96,6 +96,8 @@ struct LcdConfig {
   int d1 = -1, d2 = -1, d3 = -1;  // QSPI data0 uses mosi
   bool round = false;
   uint8_t font_scale = 1;  // UI text scale multiplier, clamped so the scale stays 1..4 (hg::DisplayInfo)
+  // Most body lines a text screen may use (hg::DisplayInfo::body_rows_cap); 0 = no cap.
+  uint8_t body_rows_cap = 0;
 };
 
 struct I2sMicConfig {

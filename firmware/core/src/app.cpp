@@ -265,6 +265,19 @@ void App::begin() {
   std::snprintf(buf, sizeof(buf), "device %s ready (board %s, fw %s)", device_id_.c_str(), profile_.board.c_str(),
                 profile_.firmware.c_str());
   log(LogLevel::Info, buf);
+  // One line that says which area the UI actually lays out in: the panel, the area
+  // inside a round bezel, the text scale and the font cell. Layout bugs on a round
+  // panel are invisible without it.
+  if (ui_) {
+    const auto& area = ui_->area();
+    const auto& lay = ui_->layout();
+    char line[128];
+    std::snprintf(line, sizeof(line), "ui: area %ux%u, scale %d, font %dpx, round %d, robot %d",
+                  static_cast<unsigned>(area.width), static_cast<unsigned>(area.height), lay.scale,
+                  font::kMetrics.cell_h, area.round ? 1 : 0, profile_.robot_face ? 1 : 0);
+    log(LogLevel::Info, line);
+    log(LogLevel::Info, ui_->hero_report());
+  }
 }
 
 std::string App::next_id(char prefix) {

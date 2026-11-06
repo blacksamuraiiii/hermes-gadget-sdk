@@ -54,6 +54,21 @@ def gb2312_codepoints(lo: int, hi: int) -> set[int]:
     return points
 
 
+def weight_regular(font) -> None:
+    """A variable face defaults to its lightest instance: Montserrat's is weight 100,
+    which draws hairline glyphs that land as a few pixels. Pin the regular instance."""
+    try:
+        axes = font.get_variation_axes()
+    except OSError:
+        return  # a static face, nothing to pin
+    values = []
+    for axis in axes:
+        name = axis.get("name", b"").decode("latin-1").lower()
+        values.append(400 if "weight" in name else axis["default"])
+    if values:
+        font.set_variation_by_axes(values)
+
+
 def render(font, ch: str, cell: int) -> list[list[bool]]:
     """One glyph in a `cell` square, 1-bit."""
     img = Image.new("L", (cell, cell), 0)
@@ -233,6 +248,7 @@ def main(argv=None) -> int:
     cell = args.px
     latin_path, cjk_path = pathlib.Path(args.latin), pathlib.Path(args.cjk)
     latin = ImageFont.truetype(str(latin_path), cell)
+    weight_regular(latin)
     cjk = ImageFont.truetype(str(cjk_path), cell)
 
     lo, hi = CHARSETS[args.charset]

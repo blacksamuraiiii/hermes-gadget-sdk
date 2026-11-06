@@ -2,6 +2,8 @@
 
 #include "hg/robot_face.hpp"
 
+#include <cstdio>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -237,6 +239,9 @@ Ui::Ui(Display& display)
   int content_h = h - layout_.top_h - layout_.header_h - layout_.bottom_h;
   layout_.body_cols = cols_for(w - 2 * margin, s);
   layout_.body_rows = std::max(1, (content_h - margin) / Canvas::line_height(s));
+  if (panel_.body_rows_cap) {
+    layout_.body_rows = std::min<int>(layout_.body_rows, panel_.body_rows_cap);
+  }
 
   // Hero layout: the mascot is sized per screen (see hero_geom).
   layout_.hero_cols = cols_for(w - 4 * s, s);
@@ -810,7 +815,11 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   // get the whole area; the caption also sits a little further down.
   const int main_h = m.robot ? info_.height - layout_.top_h : layout_.main_h;
   const int gap = m.robot ? 5 * s : 2 * s;
-  const int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
+  int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
+  // A board's own face is drawn `zoom()` times its box, so cap the box to keep the
+  // whole design frame inside the area: otherwise the waves beside the head land
+  // outside a round panel and disappear.
+  if (m.robot) avail = std::min(avail, static_cast<int>(w / robot::zoom()));
   // The mascot only exists at 64/96/144/192; a board's own face scales to anything,
   // so it takes the room it is given instead of stepping down a size.
   g.size = m.robot ? std::max(32, avail) : mascot::pick(avail, mascot::Frame::Idle)->size;
@@ -884,6 +893,10 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
 
   const HeroGeom g = hero_geom(m);
   const int size = g.size, mx = g.x, my = g.y;
+  hero_size_ = g.size;
+  hero_y_ = g.y;
+  hero_caption_y_ = g.caption_y;
+  hero_band_h_ = y1 - y0;
   const mascot::Anchors& a = mascot::anchors();
   if (m.robot) {
     // The board's own face: her shell, eyes and mood extras, all from primitives.
@@ -958,6 +971,13 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
     if (!m.yes.empty()) button(margin, m.yes, kGreenDim);
     if (!m.no.empty()) button(margin + bw + gap, m.no, kRedDim);
   }
+}
+
+std::string Ui::hero_report() const {
+  char buf[96];
+  std::snprintf(buf, sizeof(buf), "hero: size %d at y %d, caption y %d, band %d",
+                hero_size_, hero_y_, hero_caption_y_, hero_band_h_);
+  return buf;
 }
 
 void Ui::draw_bottom(Canvas& c, const UiModel& m) {

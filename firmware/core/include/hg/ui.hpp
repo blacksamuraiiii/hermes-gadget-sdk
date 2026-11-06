@@ -128,6 +128,10 @@ class Ui {
   // A canvas over that area, and a flush of its rows [y0, y1).
   Canvas canvas();
   void flush(int y0, int y1);
+  // What the last hero frame drew and where: the face box, the caption line and the
+  // line height, for the boot log. A layout that falls off a round panel is otherwise
+  // invisible in a log.
+  std::string hero_report() const;
   // Body text rows visible on a text screen for this model (after detail lines).
   int body_rows(const UiModel& m) const;
   // Dashboard rows that fit the content band.
@@ -173,6 +177,7 @@ class Ui {
   // The rows the last hero frame painted. A change repaints these too, because the face
   // being replaced can reach further than the one replacing it (a frown back to a smile).
   int hero_painted_y0_ = 0, hero_painted_y1_ = 0;
+  int hero_size_ = 0, hero_y_ = 0, hero_caption_y_ = 0, hero_band_h_ = 0;
   uint32_t battery_hash_ = 0;
   bool hero_valid_ = false;
   bool valid_ = false;

@@ -767,6 +767,9 @@ BoardConfig make() {
   b.robot_face = true;  // 小墨's robot face (notes/设计-小墨表情.md), not the mascot bitmaps
   // The 16 px font tables (CONFIG_HG_FONT_CELL=16) already read well on the 1.28"
   // panel, so the automatic text scale 1 stays: doubling it would land at 32 px.
+  // Two body lines are all a 1.28" round panel shows without the bezel eating the
+  // last one; the app pages longer text.
+  b.lcd.body_rows_cap = 2;
   b.greeting = "Hi, I'm Moji";  // the idle screen says whose face this is
   b.talk_label = "BOOT";
   return b;
