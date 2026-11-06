@@ -167,6 +167,9 @@ class Ui {
   UiLayout layout_;
   uint32_t hash_[4] = {0, 0, 0, 0};
   uint32_t hero_static_ = 0, hero_anim_ = 0;
+  // The rows the last hero frame painted. A change repaints these too, because the face
+  // being replaced can reach further than the one replacing it (a frown back to a smile).
+  int hero_painted_y0_ = 0, hero_painted_y1_ = 0;
   uint32_t battery_hash_ = 0;
   bool hero_valid_ = false;
   bool valid_ = false;

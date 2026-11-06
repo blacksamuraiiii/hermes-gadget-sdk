@@ -308,14 +308,24 @@ void Ui::draw_frame(const UiModel& m) {
     uint32_t anim = hero_anim_key(m);
     int y0 = y_header, y1 = y_bottom;
     bool redraw = !valid_ || !hero_valid_ || stat != hero_static_;
+    int next_y0 = -1, next_y1 = -1;
     if (!redraw && anim != hero_anim_) {
-      hero_anim_rows(m, y0, y1);  // only what can move
+      int ny0 = y0, ny1 = y1;
+      hero_anim_rows(m, ny0, ny1);  // only what can move
+      y0 = std::min(ny0, hero_painted_y0_);
+      y1 = std::max(ny1, hero_painted_y1_);
+      next_y0 = ny0;
+      next_y1 = ny1;
       redraw = true;
     }
     if (redraw) {
       c.set_clip_rows(y0, y1);
       draw_hero(c, m);
       flush(y0, y1);
+      // The band is consistent now, so remember only the rows that can move next time.
+      if (next_y0 < 0) hero_anim_rows(m, next_y0, next_y1);
+      hero_painted_y0_ = next_y0;
+      hero_painted_y1_ = next_y1;
     }
     hero_static_ = stat;
     hero_anim_ = anim;
@@ -801,7 +811,8 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
       add(ty - size / 6, ty + size / 12);
       break;
     }
-    case Emote::Sad:  // the tear below the near eye and the mouth, both baked into the frame
+    case Emote::Happy:  // the smile is the eyes and the mouth, both baked into the frame
+    case Emote::Sad:  // the tear below the near eye and the frown, likewise
       add(my + size * a.eyes_y0 / 1000, my + size * a.mouth_y1 / 1000);
       break;
     default: break;

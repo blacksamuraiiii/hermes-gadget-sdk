@@ -982,6 +982,33 @@ TEST("app: an idle hero falls asleep after two minutes and wakes on a button") {
   CHECK(r.app.model().emote != hg::Emote::Sleeping);
 }
 
+TEST("app: a face change repaints the whole face, not just the eyes") {
+  // A smile reaches down to the mouth, so going back to a neutral face has to repaint
+  // that far too: comparing against a fresh renderer catches a left-behind mouth.
+  hg::UiModel m;
+  m.screen = hg::Screen::Ready;
+  m.link = hg::Link::Online;
+  m.headline = "Hermes";
+  m.detail = "Ask me anything";
+  m.hero = true;
+  m.frame = 10;
+
+  FakeHal used;
+  used.make_round(240);
+  hg::Ui ui(used);
+  ui.render(m);
+  m.emote = hg::Emote::Happy;
+  ui.render(m);
+  m.emote = hg::Emote::Auto;
+  ui.render(m);
+
+  FakeHal clean;
+  clean.make_round(240);
+  hg::Ui fresh(clean);
+  fresh.render(m);
+  CHECK(used.fb == clean.fb);
+}
+
 TEST("app: holding CANCEL starts a new session; a short press still cancels") {
   Rig r;
   r.bring_online(true);
