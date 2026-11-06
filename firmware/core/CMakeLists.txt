@@ -1,5 +1,6 @@
 # Portable device core. Builds as an ESP-IDF component or a plain CMake library.
 option(HG_CORE_FONT_CJK "Carry the CJK font tables (otherwise the upstream 5x7 Latin-1 one)" ON)
+option(HG_MASCOT "Link the mascot bitmaps (upstream boards' hero face)" ON)
 set(HG_CORE_FONT_CELL "12" CACHE STRING "CJK cell height in pixels (12 baseline, 16 for the moji board)")
 
 set(HG_CORE_SOURCES
@@ -14,7 +15,6 @@ set(HG_CORE_SOURCES
     src/i18n_es.cpp
     src/frame_stats.cpp
     src/json.cpp
-    src/mascot_data.cpp
     src/protocol.cpp
     src/qr.cpp
     src/robot_face.cpp
@@ -39,7 +39,7 @@ else()
 endif()
 
 # Which CJK cell height this build carries: 12 px is the tree's baseline, 16 px is the
-# moji board's (8-column Montserrat ASCII + 16x16 Noto Sans SC, see
+# moji board's (single Noto Sans SC table for CJK + Latin, see
 # tools/make_cjk_font.py). The tables live in src/font_*<suffix>.cpp.
 if(ESP_PLATFORM)
   set(HG_FONT_CELL ${CONFIG_HG_FONT_CELL})
@@ -60,6 +60,23 @@ if(HG_FONT_CJK_BUILD)
 else()
   list(APPEND HG_CORE_SOURCES src/font_5x7.cpp)
   set(HG_FONT_CJK 0)
+endif()
+
+# The mascot bitmaps are the upstream boards' hero face. A board that draws its
+# own face (movecall-moji, robot_face) leaves them out: the stub keeps
+# hg::mascot::pick()/anchors() linkable, and pick() returns an empty frame, so
+# nothing is drawn. The board's Kconfig picks it on ESP targets; a host build
+# uses the option above. Host tests assume the mascot is linked; build them
+# with the default ON.
+if(ESP_PLATFORM)
+  set(HG_MASCOT_BUILD ${CONFIG_HG_MASCOT})
+else()
+  set(HG_MASCOT_BUILD ${HG_MASCOT})
+endif()
+if(HG_MASCOT_BUILD)
+  list(APPEND HG_CORE_SOURCES src/mascot_data.cpp)
+else()
+  list(APPEND HG_CORE_SOURCES src/mascot_stub.cpp)
 endif()
 
 if(ESP_PLATFORM)

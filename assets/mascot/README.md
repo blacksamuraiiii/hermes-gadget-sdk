@@ -10,9 +10,13 @@ The artwork comes from the Hermes Agent repository (MIT License, Copyright (c) 2
 
 | Output | Tool |
 |---|---|
-| `firmware/core/src/mascot_data.cpp`: 1-bit idle, blink and talk frames at 64, 96, 144 and 192 px (about 26 KB of flash) | `hermes-gadget face` |
+| `firmware/core/src/mascot_data.cpp`: 1-bit idle, blink, talk, happy and sad frames at 64, 96, 144 and 192 px (about 44 KB of flash) | `hermes-gadget face` |
 | `docs/images/logo.png` | `python tools/make_logo.py` |
 
 Both need Pillow (`pip install "hermes-gadget[images]"`).
+
+The movecall-moji board draws its own robot face and leaves the frames out of its firmware
+(`CONFIG_HG_MASCOT` off in its `sdkconfig.defaults`); the artwork and the generator stay
+for the other boards.
 
 The blink and talk frames are drawn on top of the master. Their eye, mouth and ear-cup coordinates are in 1024-pixel master space, in the mascot profile of `python/hermes_gadget/face.py`. Adjust them there if the master changes; [docs/faces.md](../../docs/faces.md) covers the whole workflow.

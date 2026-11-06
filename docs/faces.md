@@ -10,6 +10,11 @@ custom face comes back by rebuilding it.
 The generator is `hermes-gadget face`. It replaces the old `tools/gen_mascot.py`, and with no
 arguments it regenerates the mascot, byte for byte, from the project's own artwork.
 
+Not every board ships the mascot: a board that draws its own face (the movecall-moji
+board draws a procedural robot face) turns off `HG_MASCOT` in its `sdkconfig.defaults`,
+and the frames are not linked into its firmware — about 44 KB saved. The artwork stays
+in `assets/mascot/` and the generator keeps working for the other boards.
+
 Artwork in this repository, in examples and in tests is original artwork. A picture of a real
 person belongs on your own device and nowhere else, and this project is independent of Nous
 Research, so nothing here should look like an endorsement of one.

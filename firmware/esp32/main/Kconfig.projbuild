@@ -32,10 +32,22 @@ menu "Hermes Gadget"
         default 12
         help
             12 is the tree's baseline table (Fusion Pixel, GB2312 level 1, about
-            110 KB of flash). 16 is the moji board's: Montserrat ASCII with its own
-            advance per glyph plus Noto Sans SC 16x16 for GB2312's 6763 hanzi (about
-            240 KB). Both keep `advance()` in sync with the table's metrics; a size
-            without a table in src/ will not link.
+            110 KB of flash). 16 is the moji board's: one Noto Sans SC table for
+            both CJK and Latin (16 px ink in a 22 px line box), Latin with its own
+            advance per glyph, GB2312's 6763 hanzi (about 240 KB). Both keep
+            `advance()` in sync with the table's metrics; a size without a table
+            in src/ will not link.
+
+    config HG_MASCOT
+        bool "Link the mascot bitmaps (upstream boards' hero face)"
+        default y
+        help
+            The Hermes mascot frames (about 44 KB) the upstream boards draw as
+            their hero face. A board that draws its own face (movecall-moji,
+            robot_face) turns this off: the artwork stays in the repository
+            (assets/mascot/) and the generator keeps working, but the frames
+            are not linked into the firmware. Off, hg::mascot::pick() returns
+            an empty frame and nothing is drawn.
 
     menu "Defaults (overridable from the serial console)"
         config HG_DEFAULT_NAME
