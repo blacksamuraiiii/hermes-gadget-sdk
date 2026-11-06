@@ -178,11 +178,9 @@ void draw_eye(Pen& p, float cx, float cy, EyeStyle style) {
   switch (style) {
     case EyeStyle::Dot:
       p.disc(cx, cy, 8.5f, p.ink());
-      p.disc(cx + 2.5f, cy - 2.5f, 2.5f, p.bg());  // the catchlight
       break;
     case EyeStyle::Wide:
       p.disc(cx, cy, 10, p.ink());
-      p.disc(cx + 3, cy - 3, 3, p.bg());
       break;
     case EyeStyle::Smile:  // a happy eye curves up
       p.arc(cx, cy + 5, 9, 5, 200, 340, p.ink());

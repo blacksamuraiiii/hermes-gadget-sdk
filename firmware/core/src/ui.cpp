@@ -304,7 +304,8 @@ void Ui::draw_frame(const UiModel& m) {
   Canvas c = canvas();
   const int y_header = layout_.top_h;
   const int y_content = y_header + layout_.header_h;
-  const int y_bottom = h - layout_.bottom_h;
+  // A board with its own face has no bottom bar: her caption sits under the face.
+  const int y_bottom = m.robot ? h : h - layout_.bottom_h;
 
   uint32_t hashes[4];
   hashes[0] = Hash().add(m.title).val(m.lang).val(m.link).val(panel_.round && m.screen == Screen::Settings).val(panel_.round && m.settings_hold)
@@ -326,8 +327,10 @@ void Ui::draw_frame(const UiModel& m) {
   hashes[3] = Hash().add(m.hint).get();
 
   if (m.hero) {
-    // Hero mode: top bar, one mascot band, bottom bar.
+    // Hero mode: top bar, one face band, and the bottom bar unless the board draws
+    // its own face (then the caption takes that space).
     for (int i : {0, 3}) {
+      if (i == 3 && m.robot) continue;
       if (valid_ && hash_[i] == hashes[i]) continue;
       int y0 = i == 0 ? 0 : y_bottom, y1 = i == 0 ? y_header : h;
       c.set_clip_rows(y0, y1);
@@ -411,7 +414,9 @@ void Ui::draw_top(Canvas& c, const UiModel& m) {
     // The settings hold target: a dim label under the link dot, with no bar
     // behind it. The label line (2r + 4s .. 2r + 13s) fits the band.
     int r = std::max(2, 3 * s / 2 + 1);
-    if (m.settings_hold) {
+    // A board drawing its own face keeps the top band for the face: the hold target
+    // still works, it just carries no label.
+    if (m.settings_hold && !m.robot) {
       const char* control =
           i18n::text(m.lang, m.screen == Screen::Settings ? i18n::Msg::BackToHermesTarget : i18n::Msg::SettingsTarget);
       c.text((w - Canvas::text_width(control, s)) / 2, 2 * r + 4 * s, control, s, kDim);
@@ -796,12 +801,16 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   }
   // Reserve one detail line even when there is none, so the mascot keeps its size.
   const int ch = caption_h(std::max<int>(1, static_cast<int>(g.detail.size())));
-  const int avail = std::min(w - 8 * s, layout_.main_h - ch - buttons_h - 4 * s);
+  // A board with its own face leaves out the bottom bar, so the face and its caption
+  // get the whole area; the caption also sits a little further down.
+  const int main_h = m.robot ? info_.height - layout_.top_h : layout_.main_h;
+  const int gap = m.robot ? 5 * s : 2 * s;
+  const int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
   g.size = mascot::pick(avail, mascot::Frame::Idle)->size;
-  const int block = g.size + 2 * s + ch + buttons_h;
+  const int block = g.size + gap + ch + buttons_h;
   g.x = (w - g.size) / 2;
-  g.y = layout_.main_y + std::max(s, (layout_.main_h - block) / 2);
-  g.caption_y = g.y + g.size + 2 * s;
+  g.y = layout_.main_y + std::max(s, (main_h - block) / 2);
+  g.caption_y = g.y + g.size + gap;
   g.buttons_y = g.caption_y + ch + 2 * s;
   return g;
 }
@@ -854,14 +863,15 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
     add(my - margin, my + size + margin);
   }
   y0 = std::max(top - 1, layout_.top_h);
-  y1 = std::min(bottom + 2, static_cast<int>(info_.height) - layout_.bottom_h);
+  y1 = std::min(bottom + 2, m.robot ? static_cast<int>(info_.height)
+                                    : static_cast<int>(info_.height) - layout_.bottom_h);
 }
 
 void Ui::draw_hero(Canvas& c, const UiModel& m) {
   const int s = layout_.scale;
   const int w = info_.width;
   const int y0 = layout_.top_h;
-  const int y1 = info_.height - layout_.bottom_h;
+  const int y1 = m.robot ? info_.height : info_.height - layout_.bottom_h;
   const int lh = Canvas::line_height(s);
   c.fill_rect(0, y0, w, y1 - y0, bg_);
 
