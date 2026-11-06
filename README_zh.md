@@ -11,10 +11,10 @@
 
 ## 一、版本更新记录
 
-### moji-0.3 · 预发布（`feat/moji-0.3`，固件 `0.3.0`）
+### moji-0.3 · 正式版（固件 `0.3.0`，GitHub Release `moji-0.3` 为 latest）
 
-GitHub 上是 **pre-release**：`hermes gadget update --latest` 只认正式发布，取不到这一版；
-唤醒阈值还没标定，所以没转正式版。资产与刷法见 [firmware/releases/v0.3/](firmware/releases/v0.3/README.md)。
+`hermes gadget update <设备> --latest` 可直接升到这一版：分区表未动，0.2 → 0.3 只换 app 槽。
+唤醒阈值仍是默认 0.20，三档标定待补。资产与刷法见 [firmware/releases/v0.3/](firmware/releases/v0.3/README.md)。
 
 **固件**
 
@@ -39,7 +39,7 @@ GitHub 上是 **pre-release**：`hermes gadget update --latest` 只认正式发�
 - 每 2 分钟的 relay 巡检**默认关闭**（`platforms.gadget.extra.relay_watch: true` 才开）：板子不是一直插着。
 - 口播与屏幕都先清洗模型当文本吐出的工具调用标记，整条回复都是标记时给「这条回复是空的，请再问一次」。
 
-**还没做**：阈值标定（发版阻断）、E2/E3/E7 真机记录、B5 的失败注入实测。
+**还没做**：阈值标定（现用默认 0.20）、E2/E3/E7 的真机对话记录、B5 的失败注入实测。
 
 ### moji-0.2 · 已发布（tag `moji-0.2`）
 

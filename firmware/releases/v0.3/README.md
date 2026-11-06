@@ -1,10 +1,10 @@
-# moji-0.3 固件（Movecall moji ESP32-S3，16 MB flash）· 预发布
+# moji-0.3 固件（Movecall moji ESP32-S3，16 MB flash）· 正式版
 
 0.3 在 0.2 的语音唤醒之上修了 5 处固件问题，**没有动分区表**：从 0.2 升上来可以只刷 app
 （`app-flash` / OTA），不必整片刷。
 
-这是 GitHub 的 **pre-release**：`hermes gadget update --latest` 只认正式发布
-（`releases/latest`），所以这一版不会被 `--latest` 取到；要装它按下面的命令刷。
+这是 GitHub 的**正式发布**（`releases/latest` 指向本 tag）：`hermes gadget update <device> --latest`
+可以直接升到这一版；离线刷写按下面的命令。
 
 ## 这一版改了什么（固件侧）
 
@@ -99,4 +99,4 @@ hg.wake: hit: command 0 at NN percent
 - **唤醒阈值还没标定**：当前固定 0.20（20%），标定要 15/20/25 三档 × 0.5/1/2 m × 安静/噪声各 20 遍，
   见 `notes/待办-20261030-moji-0.3.md` 任务 A2。
 - 无取消键、无触摸：`caps.dashboard` 不上报，提醒走卡片 + cue。
-- 预发布：`--latest` 取不到这一版；等阈值标定完、转正式发布后再验 OTA 链路。
+- OTA：`--latest` 已指向本版，0.2 设备可直接升上来（分区表未变）；OTA 链路的真机实测（0.2 → 0.3）仍待做。
