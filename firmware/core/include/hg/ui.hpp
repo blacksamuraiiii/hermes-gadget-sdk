@@ -39,6 +39,10 @@ enum class Screen : uint8_t {
   Dashboard,  // Hermes's sessions and the user's status tiles (docs/protocol.md#dashboard)
 };
 
+// The face the hero shows, when the screen alone would not say it. Auto derives the
+// face from the screen and the clock; the others are a timed override or a resting face.
+enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping };
+
 enum class Link : uint8_t { Offline, Network, Connecting, Online };
 
 const char* screen_name(Screen s);
@@ -55,6 +59,10 @@ struct DashRow {
 struct UiModel {
   Screen screen = Screen::Boot;
   Link link = Link::Offline;
+  // A face the state alone does not explain: happy for a moment after a wake hit, sad
+  // for a moment after a turn with no speech, sleeping after a long idle. Auto means
+  // the screen decides. Kept out of mascot::Frame because sleeping is not a bitmap.
+  Emote emote = Emote::Auto;
   std::string title;     // top bar (device name)
   i18n::Lang lang = i18n::Lang::En;  // for the words the UI draws itself (top bar)
   std::string headline;  // header band, next to the indicator

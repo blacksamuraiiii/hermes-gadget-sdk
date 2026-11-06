@@ -45,6 +45,9 @@ constexpr uint32_t kManualScrollPauseMs = 15000;  // UP/DOWN pauses automatic pa
 constexpr uint8_t kCaptionLines = 3;          // detail lines on pairing, setup and card screens
 constexpr uint8_t kPromptLines = 4;           // ...and on a question (the renderer drops lines on small screens)
 constexpr uint32_t kFrameMs = 100;
+// How long the two timed faces stay up, and how long an idle screen waits before she sleeps.
+constexpr uint32_t kEmoteMs = 3000;
+constexpr uint32_t kSleepingAfterMs = 120000;
 constexpr uint32_t kSensorIntervalMs = 2000;
 constexpr uint32_t kDefaultCardMs = 15000;
 constexpr int kDashboardVersion = 1;    // the dashboard message this firmware draws
@@ -1018,6 +1021,8 @@ void App::on_wake_hit(int command_id, float score) {
   wake_awaiting_cue_ = true;
   wake_cue_at_ = t;
   wake_display();
+  // "There you are." Listening takes the screen a moment later, so this shows for a blink.
+  set_emote(Emote::Happy, kEmoteMs);
   update_model();  // the screen lights up now, the recording waits for the cue
 }
 
@@ -1082,6 +1087,11 @@ void App::finish_listening() {
   mode_since_ = now();
   last_turn_rx_ = now();
   status_ = tr(i18n::Msg::Sending);
+}
+
+void App::set_emote(Emote e, uint32_t ms) {
+  emote_ = e;
+  emote_until_ = now() + ms;
 }
 
 void App::cancel_listening(std::string_view why) {
@@ -1154,6 +1164,7 @@ void App::on_mic_samples(const int16_t* samples, size_t count) {
       update_model();
     } else if (r == Vad::Result::NoSpeech) {
       cancel_listening("no speech");
+      set_emote(Emote::Sad, kEmoteMs);  // the turn came back empty: one frown, then straight
       set_hint_flash(tr(i18n::Msg::DidntHearAnything));
       update_model();
     }
@@ -1487,6 +1498,8 @@ void App::h_ota_abort(const json::Value&) {
 
 void App::tick() {
   const uint32_t t = now();
+  // The idle clock sleeping reads: kept here so no mode assignment has to remember it.
+  if (mode_ != Mode::Idle) idle_since_ = t;
   power_tick();
   settings_tick();
   phone_tick();
@@ -1636,6 +1649,7 @@ void App::update_model() {
   m.scroll = scroll_;
   m.level = level_;
   m.speaking = speaking();
+  m.emote = Emote::Auto;
   m.color_test = false;
   m.settings_hold = settings_hold_live();
   m.battery = -1;
@@ -1847,6 +1861,13 @@ void App::update_model() {
       *power_status_->battery_percent <= 10 && power_status_->external_power == false)
     m.detail = tr(Msg::LowBattery);
   if (!hint_flash_.empty()) m.hint = hint_flash_;
+  // A timed face (happy, sad) outranks the screen; otherwise an idle hero falls asleep.
+  const uint32_t t = now();
+  if (emote_until_ != 0 && static_cast<int32_t>(emote_until_ - t) > 0) {
+    m.emote = emote_;
+  } else if (m.screen == Screen::Ready && m.hero && !display_sleeping_ && t - idle_since_ >= kSleepingAfterMs) {
+    m.emote = Emote::Sleeping;
+  }
   if (!display_sleeping_) render(m);
 }
 

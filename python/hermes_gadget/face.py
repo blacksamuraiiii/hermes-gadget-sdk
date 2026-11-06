@@ -1,7 +1,7 @@
 """The face the device draws, and how to make one from a picture.
 
-The firmware draws three frames, idle, blink and talk, at 64, 96, 144 and 192 px.
-They ship as the Hermes Agent mascot, generated into
+The firmware draws five frames — idle, blink, talk, happy and sad — at 64, 96,
+144 and 192 px. They ship as the Hermes Agent mascot, generated into
 `firmware/core/src/mascot_data.cpp`.
 
 Two profiles:
@@ -36,13 +36,19 @@ MASTER = REPO / "assets" / "mascot" / "nous-girl-white-1024.png"
 OUT_DEFAULT = REPO / "firmware" / "core" / "src" / "mascot_data.cpp"
 
 SIZES = (64, 96, 144, 192)
-FRAMES = ("idle", "blink", "talk")
+FRAMES = ("idle", "blink", "talk", "happy", "sad")
 THRESHOLD = 110  # alpha above this is ink after downsampling
 MASTER_SIZE = 1024  # the master's side, in pixels: the coordinates below live in this space
 BG = (10, 14, 20)  # the device's background, for the pictures we write
 LID_DROP = 0.10    # where a closed lid sits inside the eye
 LID_WIDTH = 0.20   # lid stroke, as a fraction of the eye's half width
 LID_SAG = 0.35     # how far the lid dips in the middle
+SMILE_LIFT = 0.45  # how far a happy eyelid rises, as a fraction of the eye's half height
+SMILE_MOUTH_GROW = 1.6  # the open mouth, scaled about its own centre
+FROWN_WIDTH = 1.4  # the sad mouth, as a multiple of the recorded mouth's half width
+FROWN_SAG = 0.85   # how far it bows down at the corners, of that same half width
+TEAR_W, TEAR_H = 32, 48  # the teardrop, in master pixels; at 192 px it is 6 x 9
+TEAR_DROP = 44     # master px below the near eye's centre
 
 # The mascot's feature geometry, in master pixels. The eye and lid shapes are
 # polygons because the artwork's eyes are, which is what makes this reproduce
@@ -119,6 +125,49 @@ def thousandths(master_px: int) -> int:
 
 # -- the mascot profile ---------------------------------------------------------------------------------
 
+def _bbox(points):
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _smile(master_alpha):
+    """Happy: the open eyes become upward arcs, and the mouth opens wide.
+
+    The artwork is a solid silhouette, so every feature is cut out of it: the eye
+    is covered with skin (ink) and the new shape drawn as a hole, which is how
+    blink draws its lids too.
+    """
+    happy = master_alpha.copy()
+    draw = ImageDraw.Draw(happy)
+    for eye, width in (("right_eye", 14), ("left_eye", 12)):
+        x0, y0, x1, y1 = _bbox(MASCOT[eye])
+        draw.polygon(MASCOT[eye], fill=255)  # skin over the open eye
+        cy = (y0 + y1) / 2
+        lift = (y1 - y0) / 2 * SMILE_LIFT
+        draw.line([(x0, cy), ((x0 + x1) / 2, cy - lift), (x1, cy)], fill=0, width=width, joint="curve")
+    draw.ellipse(_grow(MASCOT["mouth_open"], SMILE_MOUTH_GROW), fill=0)  # the mouth opens wide
+    return happy
+
+
+def _frown(master_alpha):
+    """Sad: the mouth turns down and one tear leaves the near eye."""
+    sad = master_alpha.copy()
+    draw = ImageDraw.Draw(sad)
+    mx0, my0, mx1, my1 = MASCOT["mouth_open"]
+    draw.ellipse(_grow(MASCOT["mouth_open"], 1.8), fill=255)  # skin over the closed mouth
+    cx, cy = (mx0 + mx1) / 2, (my0 + my1) / 2
+    half = (mx1 - mx0) / 2 * FROWN_WIDTH
+    sag = half * FROWN_SAG
+    draw.line([(cx - half, cy + sag), (cx, cy), (cx + half, cy + sag)], fill=0, width=9, joint="curve")
+    ex0, ey0, ex1, ey1 = _bbox(MASCOT["left_eye"])
+    ex, ey = (ex0 + ex1) / 2, (ey0 + ey1) / 2 + TEAR_DROP
+    draw.ellipse((ex - TEAR_W / 2, ey, ex + TEAR_W / 2, ey + TEAR_H), fill=0)  # the drop
+    draw.polygon([(ex - TEAR_W / 2, ey + TEAR_W / 2), (ex, ey - TEAR_H * 0.45),
+                  (ex + TEAR_W / 2, ey + TEAR_W / 2)], fill=0)  # ...and its point
+    return sad
+
+
 def mascot_frames(master):
     """The frames that ship, drawn the way the artwork's own features are."""
     alpha = master.getchannel("A")
@@ -132,7 +181,7 @@ def mascot_frames(master):
 
     talk = alpha.copy()
     ImageDraw.Draw(talk).ellipse(MASCOT["mouth_open"], fill=0)  # open mouth, cut out of the ink
-    return {"idle": alpha, "blink": blink, "talk": talk}
+    return {"idle": alpha, "blink": blink, "talk": talk, "happy": _smile(alpha), "sad": _frown(alpha)}
 
 
 def mascot_anchors() -> dict:
@@ -284,6 +333,11 @@ def to_bits(alpha, size: int, threshold: int = THRESHOLD) -> bytes:
     return bytes(out)
 
 
+def _frame_order(frames) -> tuple:
+    """FRAMES order, keeping only what this profile drew: a picture of your own has three."""
+    return tuple(f for f in FRAMES if f in frames)
+
+
 def emit(frames, anchors: dict, source: str, threshold: int = THRESHOLD) -> str:
     """The C++ source for a face. `source` is how the header describes where it came from."""
     lines = [
@@ -299,7 +353,7 @@ def emit(frames, anchors: dict, source: str, threshold: int = THRESHOLD) -> str:
     ]
     table = []
     for size in SIZES:
-        for frame in FRAMES:
+        for frame in _frame_order(frames):
             name = f"k{frame.capitalize()}{size}"
             data = to_bits(frames[frame], size, threshold)
             lines.append(f"const uint8_t {name}[{len(data)}] = {{")
@@ -360,7 +414,7 @@ def preview(frames, path: Path, threshold: int = THRESHOLD) -> None:
     pad, scale, label_w, head_h = 10, 3, 86, 54
     cols = [s * scale for s in SIZES]
     sheet = Image.new("RGB", (label_w + sum(c + pad for c in cols) + pad,
-                              head_h + len(FRAMES) * (max(SIZES) * scale + pad) + pad), BG)
+                              head_h + len(_frame_order(frames)) * (max(SIZES) * scale + pad) + pad), BG)
     draw = ImageDraw.Draw(sheet)
     _label(draw, (label_w, 8), "What the screen shows: each row is a pose, each column a size",
            fill=(240, 244, 248), size=22)
@@ -369,7 +423,7 @@ def preview(frames, path: Path, threshold: int = THRESHOLD) -> None:
         _label(draw, (x + width // 2, 32), f"{size} px", size=18, anchor="ma")
         x += width + pad
     y = head_h
-    for frame in FRAMES:
+    for frame in _frame_order(frames):
         row_h = max(SIZES) * scale
         _label(draw, (pad, y + row_h // 2 - 12), frame, size=22)
         x = label_w + pad
@@ -436,7 +490,9 @@ def report(frames, threshold: int = THRESHOLD) -> None:
     for size in SIZES:
         idle = to_bits(frames["idle"], size, threshold)
         parts = []
-        for frame in ("blink", "talk"):
+        for frame in _frame_order(frames):
+            if frame == "idle":
+                continue
             other = to_bits(frames[frame], size, threshold)
             bits = sum(bin(a ^ b).count("1") for a, b in zip(idle, other))
             parts.append(f"{frame} {bits:>5} ({bits * 100 / (size * size):.2f}%)")

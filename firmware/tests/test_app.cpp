@@ -934,6 +934,54 @@ TEST("app: hero animation redraws only a slice of the screen") {
   CHECK(rows / flushes < 60);
 }
 
+TEST("app: a wake hit shows the happy face for a moment, then lets it go") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_wake_hit(1, 0.62f);
+  CHECK(r.app.model().emote == hg::Emote::Happy);
+  r.advance(2000);  // the recording has the screen; the face outlasts it and is still there
+  CHECK(r.app.model().emote == hg::Emote::Happy);
+  r.advance(1500);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+}
+
+TEST("app: a turn with no speech shows the sad face, then lets it go") {
+  Rig r;
+  r.fake.kv["talk_mode"] = "tap";
+  r.bring_online(true);
+  r.app.on_button(hg::Button::Talk, true);
+  r.app.on_button(hg::Button::Talk, false);
+  std::vector<int16_t> silence(1600, 20);  // 100 ms of a quiet room
+  for (int i = 0; i < 60 && r.fake.last("audio.cancel") == nullptr; ++i) {
+    r.app.on_mic_samples(silence.data(), silence.size());
+    r.advance(100);
+  }
+  CHECK(r.fake.last("audio.cancel") != nullptr);
+  CHECK(r.app.screen() == hg::Screen::Ready);
+  CHECK(r.app.model().emote == hg::Emote::Sad);
+  r.advance(3500);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+}
+
+TEST("app: an idle hero falls asleep after two minutes and wakes on a button") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(2000);
+  CHECK(r.app.screen() == hg::Screen::Ready && r.app.model().hero);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+  // Ping to keep the session alive (three heartbeats at 20 s would otherwise time out).
+  for (int i = 0; i < 7; ++i) {
+    r.server(R"({"type":"ping","ts":1})");
+    r.advance(20000);
+  }
+  CHECK(r.app.screen() == hg::Screen::Ready);
+  CHECK(r.app.model().emote == hg::Emote::Sleeping);
+  r.app.on_button(hg::Button::Talk, true);
+  r.advance(100);
+  CHECK(r.app.model().emote != hg::Emote::Sleeping);
+}
+
 TEST("app: holding CANCEL starts a new session; a short press still cancels") {
   Rig r;
   r.bring_online(true);

@@ -5,7 +5,7 @@
 
 namespace hg::mascot {
 
-enum class Frame : uint8_t { Idle, Blink, Talk };
+enum class Frame : uint8_t { Idle, Blink, Talk, Happy, Sad };
 
 // Square, row-major, MSB-first, rows padded to whole bytes. A set bit is ink
 // (the white artwork); clear bits are transparent.
