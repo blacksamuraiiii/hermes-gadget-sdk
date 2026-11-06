@@ -618,9 +618,10 @@ void Ui::draw_indicator(Canvas& c, const UiModel& m, int cx, int cy, int r) {
       if (m.speaking) {
         bars(kAccent, 40 + tri(m.frame, 8) * 10);
       } else {
-        // A reply is on its way: the dot breathes, the way the idle dot used to.
+        // A reply is on its way: the dot breathes below the Ready dot's size, so the
+        // solid Ready circle is the largest a state dot ever gets.
         const int pulse = tri(m.frame, 24);  // 0..12
-        c.fill_circle(cx, cy, r * (8 + pulse / 3) / 12, kAccent);
+        c.fill_circle(cx, cy, (r * 2 / 3) * (8 + pulse / 3) / 12, kAccent);
       }
       break;
     case Screen::Card:
