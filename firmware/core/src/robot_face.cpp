@@ -24,6 +24,14 @@ constexpr uint16_t kSkyDim = rgb565(42, 78, 112);
 constexpr uint16_t kZz = rgb565(170, 170, 190);       // the sleeping Z, nearer the head
 constexpr uint16_t kZzSmall = rgb565(138, 138, 158);  // ...and the smaller one behind it
 
+// The face is drawn larger than the box the hero layout hands us: the design frame is
+// 240 px square and the head inside it is only 105 wide, which on a 240 px panel reads
+// as a small stamp. Overridable so a preview can compare two sizes.
+#ifndef HG_ROBOT_ZOOM
+#define HG_ROBOT_ZOOM 2.0f
+#endif
+constexpr float kZoom = HG_ROBOT_ZOOM;
+
 // A pen over the design frame: every coordinate below is in design units, and the
 // pen turns them into device pixels.
 class Pen {
@@ -255,9 +263,16 @@ void draw_zz(Pen& p, uint32_t frame) {
 
 }  // namespace
 
+float zoom() { return kZoom; }
+
 void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t level, uint16_t ink,
           uint16_t bg) {
-  Pen p(c, x, y, size, ink, bg);
+  // Grow about the box's centre: the design frame maps to `size * zoom`, so the head
+  // fills more of the panel. The canvas clips what leaves the hero band.
+  const float grown = static_cast<float>(size) * kZoom;
+  const int bx = x + size / 2 - static_cast<int>(grown / 2);
+  const int by = y + size / 2 - static_cast<int>(grown / 2);
+  Pen p(c, bx, by, static_cast<int>(grown), ink, bg);
   draw_shell(p);
 
   const bool blink = look != Look::Happy && look != Look::Sleeping && (frame % 45) < 2;

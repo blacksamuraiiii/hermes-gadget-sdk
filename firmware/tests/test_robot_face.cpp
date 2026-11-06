@@ -10,16 +10,18 @@
 
 namespace {
 
-constexpr int kSize = 240;  // the design frame: one canvas pixel per design pixel
+constexpr int kCanvas = 240;  // a moji-sized panel
+constexpr int kBox = 150;     // the hero box it hands the face (the panel's usable square)
+constexpr int kBoxX = 45, kBoxY = 30;
 constexpr uint16_t kInk = hg::rgb565(232, 238, 242);
 constexpr uint16_t kBg = hg::rgb565(10, 14, 20);
 
 using Frame = std::vector<uint16_t>;
 
 Frame render(hg::robot::Look look, uint32_t frame = 10, uint8_t level = 0) {
-  Frame fb(static_cast<size_t>(kSize) * kSize, kBg);
-  hg::Canvas c(fb.data(), kSize, kSize, false);
-  hg::robot::draw(c, 0, 0, kSize, look, frame, level, kInk, kBg);
+  Frame fb(static_cast<size_t>(kCanvas) * kCanvas, kBg);
+  hg::Canvas c(fb.data(), kCanvas, kCanvas, false);
+  hg::robot::draw(c, kBoxX, kBoxY, kBox, look, frame, level, kInk, kBg);
   return fb;
 }
 

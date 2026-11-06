@@ -849,7 +849,10 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
       break;
     default: break;
   }
-  if (m.robot) add(my, my + size);  // her own face fills the box
+  if (m.robot) {  // her own face fills the box, and is drawn larger than it
+    const int margin = static_cast<int>(static_cast<float>(size) * (robot::zoom() - 1.0f) / 2) + 2;
+    add(my - margin, my + size + margin);
+  }
   y0 = std::max(top - 1, layout_.top_h);
   y1 = std::min(bottom + 2, static_cast<int>(info_.height) - layout_.bottom_h);
 }
