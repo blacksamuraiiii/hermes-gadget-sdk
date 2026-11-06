@@ -7,7 +7,7 @@
 # 判据只看最后一行 VERDICT：
 #   RESTORED        板子回到总线（COM 口同时回读一遍）
 #   ALREADY ONLINE  板子本来就在，什么都没动
-#   REBOOT REQUIRED 端口被系统扣住（hub 面进入等待重启），只有重启能解决
+#   REBOOT REQUIRED 删除 hub 节点也被拒（极少见）：只有重启能解决
 #   STILL ABSENT    复位做了也没回来：换口 / 换线 / 按住 BOOT 插线
 #
 # 为什么不能只做一次 "restart-device + scan-devices"：
@@ -16,6 +16,16 @@
 #   而 /scan-devices 不会重试一个"端口重置失败"的端口 —— 于是板子一直不在总线上，
 #   只有重启电脑才清掉。所以这里要：先停 relay（它握着 COM5）→ 清占位节点 →
 #   重启 hub 面 → 回读 → 没回来再来一轮。
+#
+# 2026-11-02 补充（实测）：
+#   hub 面有子设备时，/restart-device 会返回 3010（ERROR_SUCCESS_REBOOT_REQUIRED），
+#   系统立即把该 hub 面标成"等待系统重新启动"，此后每一次 restart-device 都被拒。
+#   脚本因此永远停在 VERDICT: REBOOT REQUIRED，而问题一点没动。
+#   现在遇到 3010 就不再动节点，直接按 REBOOT REQUIRED 收尾并提示人工动作。
+#   2026-11-04 实测：曾试过"删除 hub 节点 + /scan-devices 重建"，11-02 成功过一次，
+#   但同一台机器上 MSFT20 删掉后 scan 建不回来，该 hub 的 USB2 面从此不在总线上，
+#   板子连父端口都没有（设备管理器里既无 COM5 也无失败设备）。所以不再删 hub 节点。
+
 
 [CmdletBinding()]
 param(
@@ -130,18 +140,28 @@ for ($i = 1; $i -le $MaxAttempts -and -not $restored; $i++) {
         $r = Invoke-Pnputil @('/remove-device', $f.InstanceId)
         Say ('   remove-device ' + $f.InstanceId + ' -> rc=' + $r.Code + ' ' + $r.Output)
     }
+    $waitingReboot = $false
     foreach ($t in $targets) {
         $r = Invoke-Pnputil @('/restart-device', $t)
         if ($r.Output -match '(?i)reboot|重新启动|3010') {
-            $rebootRequired = $true
-            Say ('   restart-device ' + $t + ' -> 进入等待重启状态: ' + $r.Output)
+            # 系统已把该 hub 面标成"等待重启", restart-device 从此全部被拒, 再试也没有意义。
+            # 不要改删节点重建: 2026-11-04 实测删掉 USB\VID_2109&PID_2817\MSFT20 后
+            # /scan-devices 建不回来, 该 hub 的 USB2 面彻底消失, 板子连父端口都没有 ——
+            # 设备管理器里既无 COM5 也无失败设备, 比原来更糟。只提示人工动作。
+            $waitingReboot = $true
+            Say ('   restart-device ' + $t + ' 被拒(等待重启): 不动节点')
         } else {
             Say ('   restart-device ' + $t + ' -> rc=' + $r.Code + ' ' + $r.Output)
         }
     }
+    if ($waitingReboot) {
+        $rebootRequired = $true
+        Say '   该 hub 面已进入等待重启: 拔插 hub 的上游线 3 秒再插回; 不行就只能重启电脑'
+        break
+    }
     Start-Sleep -Seconds 4
     $null = Invoke-Pnputil @('/scan-devices')
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 6
     $up = @(Get-BoardNodes -PresentOnly | Where-Object { $_.Status -eq 'OK' })
     $nowFailed = Get-FailedNodes
     Say ('   复读: 板子在线 ' + $up.Count + ' 个, 失败节点 ' + $nowFailed.Count + ' 个')

@@ -315,8 +315,12 @@ class Relay:
                            "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
         LOG.warning("no board for %.0f s - capturing a PnP snapshot for the post-mortem", missing)
         try:
+            # CREATE_NO_WINDOW: the relay itself runs as pythonw (no console), so a console child
+            # would open a window on the desktop every time the board stays away this long. The
+            # flag only exists on Windows; 0 keeps the call working on the POSIX test box.
             out = subprocess.run([exe, "-NoProfile", "-Command", script],
-                                 capture_output=True, timeout=20)
+                                 capture_output=True, timeout=20,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except Exception as exc:  # noqa: BLE001 - a missing snapshot must not stop the retry loop
             LOG.warning("PnP snapshot failed: %s", exc)
             return
