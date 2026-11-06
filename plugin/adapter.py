@@ -1038,12 +1038,13 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         return await super()._synthesize_auto_tts(clean)
 
     def prepare_tts_text(self, text: str) -> str:
-        """Speak temperatures in Chinese.
+        """Speak temperatures and percentages in Chinese.
 
         Hermes's normalizer expands ``22°C`` to ``22 degrees Celsius``; a zh-CN voice reads
-        that as "deg C". Convert to 摄氏度 first, then let the base cleanup run.
+        that as "deg C". Percentages stay English ("percent") the same way. Convert both
+        first, then let the base cleanup run.
         """
-        spoken = textfmt.speak_celsius(text or "")
+        spoken = textfmt.speak_percent(textfmt.speak_celsius(text or ""))
         base = getattr(super(), "prepare_tts_text", None)
         return base(spoken) if base is not None else textfmt.strip_markdown(spoken)
 
