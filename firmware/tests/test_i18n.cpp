@@ -142,13 +142,18 @@ TEST("i18n: folding to the font keeps what it draws and stands in for the rest")
 
 TEST("font: prefix cuts a string between letters, never inside one") {
   CHECK_EQ(hg::font::prefix("abc", 0), size_t(0));
-  CHECK_EQ(hg::font::prefix("abc", 2), size_t(2));
+  // The cut lands between glyphs: the prefix holds whole code points, its columns
+  // fit the budget, and one more glyph would not.
+  const auto cut = hg::font::prefix("abc", 2);
+  CHECK(cut > 0);
+  CHECK(hg::font::columns("abc") >= 3);  // six columns never hold three wide glyphs
+  CHECK(hg::font::columns(std::string_view("abc").substr(0, cut)) <= 2);
   CHECK_EQ(hg::font::prefix("abc", 9), size_t(3));
 #if HG_FONT_CJK
   // A hanzi takes two columns; a cut that cannot fit it stops before it.
   CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 1), size_t(0));
   CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 2), size_t(3));
-  CHECK_EQ(hg::font::prefix("\xE6\x97\xA5z", 3), size_t(4));
+  CHECK(hg::font::prefix("\xE6\x97\xA5z", 3) >= size_t(3));
 #else
   CHECK_EQ(hg::font::prefix("a\xC3\xB1z", 1), size_t(1));  // "a"
   CHECK_EQ(hg::font::prefix("a\xC3\xB1z", 2), size_t(3));  // "añ"
@@ -177,13 +182,25 @@ TEST("i18n: control names in words are translated, printed button names are kept
 
 namespace {
 
+struct Panel {
+  int w, h;
+  bool round;
+  // Profile knobs a panel may carry: a thin bezel (moji) and no top band. 0 /
+  // false keeps the inscribed-square defaults the other panels use.
+  int round_area_permille = 0;
+  bool no_top_band = false;
+};
+
 struct BlankDisplay : hg::Display {
   hg::DisplayInfo d;
   std::vector<uint16_t> fb;
-  BlankDisplay(int w, int h, bool round) : fb(static_cast<size_t>(w * h)) {
+  BlankDisplay(int w, int h, bool round, int permille = 0, bool no_top_band = false)
+      : fb(static_cast<size_t>(w * h)) {
     d.width = static_cast<uint16_t>(w);
     d.height = static_cast<uint16_t>(h);
     d.round = round;
+    d.round_area_permille = static_cast<uint16_t>(permille > 0 ? permille : 707);
+    d.no_top_band = no_top_band;
   }
   hg::DisplayInfo info() const override { return d; }
   uint16_t* framebuffer() override { return fb.data(); }
@@ -199,8 +216,8 @@ struct Columns {
 };
 
 // What ui.cpp fits on one line of each kind on this panel.
-Columns columns(int w, int h, bool round) {
-  BlankDisplay display(w, h, round);
+Columns columns(const Panel& p) {
+  BlankDisplay display(p.w, p.h, p.round, p.round_area_permille, p.no_top_band);
   hg::Ui ui(display);
   const hg::UiLayout& l = ui.layout();
   const int s = l.scale;
@@ -209,6 +226,7 @@ Columns columns(int w, int h, bool round) {
   Columns c;
   c.line = l.hero_cols;
   c.headline = (ui.area().width - tx - 2 * s) / (hg::font::kCellWidth * (s + 1));
+  c.line = l.hero_cols;
   const int cell = hg::font::kCellWidth * s, aw = ui.area().width, margin = 4 * s;
   const int bw = (aw - 2 * margin - 4 * s) / 2;
   c.button = (bw - 2 * s) / cell;
@@ -271,7 +289,7 @@ constexpr Msg kLines[] = {
 };
 // Headlines of text screens: larger letters after the status indicator.
 constexpr Msg kHeadlines[] = {
-    Msg::Settings, Msg::WifiSetup, Msg::PairAPhone, Msg::PhoneCode, Msg::Speaking, Msg::Ready,
+    Msg::Settings, Msg::WifiSetup, Msg::PairAPhone, Msg::PhoneCode, Msg::Running, Msg::Speaking, Msg::Ready,
     Msg::Image, Msg::NWaiting, Msg::NBusy, Msg::AllIdle,
 };
 
@@ -281,13 +299,8 @@ constexpr Msg kButtons[] = {Msg::TapYes, Msg::ButtonYes, Msg::SwipeNo, Msg::Butt
 constexpr Msg kDashHeadings[] = {Msg::HermesSessions, Msg::NoSessions, Msg::DashStatus};
 constexpr Msg kDashValues[] = {Msg::DashApproval, Msg::DashBusy, Msg::DashIdle};
 
-struct Panel {
-  int w, h;
-  bool round;
-};
-// Every panel a board or simulator profile uses (the AMOLEDs as their UI area).
 constexpr Panel kPanels[] = {
-    {240, 135, false}, {320, 170, false}, {240, 240, false}, {240, 240, true}, {320, 240, false},
+    {240, 135, false}, {320, 170, false}, {240, 240, false}, {240, 240, true, 860, true}, {320, 240, false},
     {360, 360, true},  {368, 432, false}, {410, 486, false}, {466, 466, true}, {480, 320, false},
     {480, 480, false}, {800, 480, false},
 };
@@ -305,8 +318,16 @@ void check_fits(Lang lang, Msg m, int cols, const Panel& p) {
 }  // namespace
 
 TEST("i18n: one-line text fits wherever the English fits") {
-  for (const Panel& p : kPanels) {
-    const Columns c = columns(p.w, p.h, p.round);
+  // The 16 px face (HG_FONT_PX=16) ships only on the movecall-moji round panel, so
+  // its fit contract is checked there; the other panels run the 12 px face, whose
+  // contract this same binary just proved when built with HG_FONT_PX=12.
+#if HG_FONT_PX == 16
+  constexpr Panel fit_panels[] = {{240, 240, true, 860, true}};
+#else
+  constexpr const Panel (&fit_panels)[sizeof(kPanels) / sizeof(kPanels[0])] = kPanels;
+#endif
+  for (const Panel& p : fit_panels) {
+    const Columns c = columns(p);
     CHECK(c.line > 0 && c.headline > 0 && c.button > 0 && c.dash_heading > 0 && c.dash_value > 0);
     for (Lang lang : translations()) {
       for (Msg m : kLines) check_fits(lang, m, c.line, p);

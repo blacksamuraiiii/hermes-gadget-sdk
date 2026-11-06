@@ -21,8 +21,9 @@ float zoom();
 // Draws the face centred in the square box (x, y, size). `frame` is the app's
 // animation frame counter (100 ms per frame), `level` the microphone level 0..100
 // for the speaking mouth, and bg the colour she sits on (a laugh's mouth is cut
-// out of it).
+// out of it). `antenna` paints the ball on her antenna: the board uses it as the
+// link lamp, so its colour can differ from the white ink.
 void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t level, uint16_t ink,
-          uint16_t bg);
+          uint16_t bg, uint16_t antenna);
 
 }  // namespace hg::robot

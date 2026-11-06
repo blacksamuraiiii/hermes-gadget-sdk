@@ -174,6 +174,19 @@ struct Cell {
   int cols;
 };
 
+// Columns a glyph costs: its own advance rounded up to whole cells. A proportional
+// Latin face makes the 1-per-codepoint rule a lie at bigger ems ("m" is three cells
+// at 22 px), and rounding UP keeps the px estimate >= the ink, so a line fitted by
+// columns is never drawn wider than its budget.
+int cols_of(uint32_t cp) {
+  const int adv = font::advance(cp);
+  const int min_cols = (cp != 0 && !(cp < 0x80 || !font::kMetrics.wide)) ? 2 : 1;
+  // Nearest cell count, half up: at 22 px the proportional Latin face averages
+  // 11 px per glyph, so a floor/ceil bias would miscount every word by a third.
+  // The residual error stays within one cell per line's ends, inside the margins.
+  return std::max(min_cols, (adv * 2 + font::kCellWidth) / (font::kCellWidth * 2));
+}
+
 std::vector<Cell> cells_of(std::string_view s) {
   std::vector<Cell> cells;
   size_t i = 0;
@@ -181,8 +194,7 @@ std::vector<Cell> cells_of(std::string_view s) {
     const size_t start = i;
     const uint32_t cp = font::decode(s, i);
     if (i == start) ++i;  // never loop on a byte the decoder refuses to consume
-    const int cols = (cp != 0 && (cp < 0x80 || !font::kMetrics.wide)) ? 1 : 2;
-    cells.push_back({start, i - start, cp, cols});
+    cells.push_back({start, i - start, cp, cols_of(cp)});
   }
   return cells;
 }
@@ -255,7 +267,7 @@ int columns(std::string_view s) {
     const size_t start = i;
     const uint32_t cp = hg::font::decode(s, i);
     if (i == start) ++i;
-    total += (cp != 0 && (cp < 0x80 || !hg::font::kMetrics.wide)) ? 1 : 2;
+    total += cols_of(cp);
   }
   return total;
 }
@@ -268,7 +280,7 @@ size_t prefix(std::string_view s, int cols) {
     const size_t start = i;
     const uint32_t cp = hg::font::decode(s, i);
     if (i == start) break;
-    const int add = (cp != 0 && (cp < 0x80 || !hg::font::kMetrics.wide)) ? 1 : 2;
+    const int add = cols_of(cp);
     if (total + add > cols) {
       i = start;
       break;

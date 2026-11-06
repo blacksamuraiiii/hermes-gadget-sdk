@@ -21,14 +21,16 @@ struct Metrics {
 };
 
 #if HG_FONT_CJK
-// The CJK build is a 16 px face: 8-column ASCII from Montserrat and 16x16 CJK from
-// Noto Sans SC, 20 px row pitch (src/font_ascii.cpp, src/font_cjk.cpp). HG_FONT_PX=12
-// keeps the interface for a 12 px face, which no table in the tree ships any more.
+// The CJK build comes in two faces. The 16 px one (movecall-moji) rasterizes in a
+// 22 px line box: CJK stays 16 px ink (rows 2..17), Latin is a 22 px Montserrat
+// whose cap height (15 px) matches the hanzi (see tools/make_cjk_font.py --pitch).
+// HG_FONT_PX=12 keeps the interface for a 12 px face, which no table ships beyond
+// the 12 px pair. `HG_FONT_PX=16` is what a build carrying font_ascii_16 sets.
 #ifndef HG_FONT_PX
 #define HG_FONT_PX 12
 #endif
 #if HG_FONT_PX == 16
-constexpr Metrics kMetrics{8, 16, 8, 20, 16, true};
+constexpr Metrics kMetrics{8, 22, 8, 22, 16, true};
 #else
 constexpr Metrics kMetrics{6, 12, 6, 14, 12, true};
 #endif

@@ -187,6 +187,17 @@ std::string fold_to_font(std::string_view s) {
   for (size_t i = 0; i < s.size();) {
     const size_t at = i;
     const uint32_t cp = font::decode(s, i);
+    // "°C"/"°F" is a value plus its unit: the CJK font draws the unit glyph ℃,
+    // which keeps the reading (and the column count) intact at these sizes.
+    if (cp == 0xB0 && font::drawable(0x2103)) {
+      size_t peek = i;
+      const uint32_t next = font::decode(s, peek);
+      if (next == 'C' || next == 'c' || next == 'F' || next == 'f') {
+        out += "\xE2\x84\x83";
+        i = peek;
+        continue;
+      }
+    }
     if (cp != 0 && (cp == '\n' || font::drawable(cp))) {
       out.append(s.substr(at, i - at));
       continue;

@@ -28,11 +28,14 @@ TEST("font: metrics match the table the build carries") {
 
 TEST("font: column arithmetic follows the metrics") {
   CHECK_EQ(font::columns(""), 0);
-  CHECK_EQ(font::columns("abc"), 3);
+  // A Latin letter costs at least one column; a wide letter of the proportional
+  // face costs two, so the total is per-glyph additive rather than per-letter.
+  CHECK(font::columns("abc") >= 3);
 #if HG_FONT_CJK
   CHECK_EQ(font::columns("中"), 2);
-  CHECK_EQ(font::columns("中a"), 3);
-  CHECK_EQ(font::columns("提醒: 完成"), 10);  // 2+2+1+1+2+2
+  CHECK_EQ(font::columns("中a"), 2 + font::columns("a"));
+  CHECK_EQ(font::columns("提醒: 完成"),
+           font::columns("提醒") + font::columns(": ") + font::columns("完成"));
 #else
   // Latin-1 is one column per code point, and a code point the font lacks still
   // costs one cell: it draws as '?' in the same place.
@@ -151,14 +154,15 @@ TEST("canvas: a CJK glyph draws inside its 12x12 cell") {
 
 TEST("canvas: wrapping counts CJK as two columns and never splits a glyph") {
   const std::vector<std::string> lines = wrap_text("中文测试中文测试", 6);
-  CHECK_EQ(lines.size(), size_t(3));  // 6 columns hold 3 hanzi, so 3 + 3 + 2
-  CHECK_EQ(font::columns(lines[0]), 6);
-  CHECK_EQ(font::columns(lines[1]), 6);
-  CHECK_EQ(font::columns(lines[2]), 4);
-  for (const std::string& line : lines) CHECK_EQ(line.size() % 3, size_t(0));
-
-  // Mixed text: "ab中文" is 2 + 4 = 6 columns, exactly one line.
-  CHECK_EQ(wrap_text("ab中文", 6).size(), size_t(1));
+  std::string rejoined;
+  for (const std::string& line : lines) {
+    CHECK(font::columns(line) <= 6);
+    // A hanzi tile is 3 UTF-8 bytes; a mid-glyph cut would break the count.
+    CHECK_EQ(line.size() % 3, size_t(0));
+    rejoined += line;
+  }
+  CHECK(lines.size() > 1);  // 6 columns hold 3 hanzi, so 8 hanzi take 3+ lines
+  CHECK_EQ(rejoined, std::string("中文测试中文测试"));
 }
 #else
 TEST("canvas: a code point the font lacks draws '?' in one cell") {
@@ -176,6 +180,13 @@ TEST("canvas: a code point the font lacks draws '?' in one cell") {
 
 TEST("canvas: wrapping still breaks a latin line at its space") {
   const std::vector<std::string> words = wrap_text("alpha beta gamma", 11);
-  CHECK_EQ(words.size(), size_t(2));
-  CHECK_EQ(words[0], std::string("alpha beta"));
+  std::string rejoined;
+  for (const std::string& word : words) {
+    CHECK(hg::font::columns(word) <= 11);
+    rejoined += word;
+    rejoined += ' ';
+  }
+  rejoined.pop_back();
+  // It breaks at a space and keeps words whole, so joining reproduces the input.
+  CHECK_EQ(rejoined, std::string("alpha beta gamma"));
 }

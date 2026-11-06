@@ -100,6 +100,7 @@ struct LcdConfig {
   uint8_t body_rows_cap = 0;
   uint16_t round_area_permille = 707;  // UI square on a round panel, of the short side
   bool no_bottom_bar = false;  // the board has no button hints to show
+  bool no_top_band = false;  // the board has no touch: the header replaces the top band
   bool calibration = false;  // panel/area rulers on screen (bring-up only)
 };
 

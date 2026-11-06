@@ -767,14 +767,15 @@ BoardConfig make() {
   b.robot_face = true;  // 小墨's robot face (notes/设计-小墨表情.md), not the mascot bitmaps
   // The 16 px font tables (CONFIG_HG_FONT_CELL=16) already read well on the 1.28"
   // panel, so the automatic text scale 1 stays: doubling it would land at 32 px.
-  // Two body lines are all a 1.28" round panel shows without the bezel eating the
-  // last one; the app pages longer text.
-  b.lcd.body_rows_cap = 2;
+  // Four body lines are what the text band holds since the top band merged away;
+  // the app pages longer text.
+  b.lcd.body_rows_cap = 4;
   // The 1.28" glass runs to the bezel: an inscribed square (70%) threw away a ring of
   // usable pixels, so the face sat small in the middle and the text bands were short.
   b.lcd.round_area_permille = 860;
   b.lcd.no_bottom_bar = true;  // one BOOT key: no hint row, the text gets the rows
-  b.greeting = "Moji";  // the idle screen names the face under it
+  b.lcd.no_top_band = true;    // no touch: the settings hold target has no owner, the header line starts at the top
+  b.greeting = "Hi, I'm Moji";  // the idle screen greets under the face
   b.talk_label = "BOOT";
   return b;
 }

@@ -90,6 +90,7 @@ typedef struct hgsim_config {
   /* Layout knobs the real boards set (see hg::DisplayInfo and hg::DeviceProfile). */
   int round_area_permille; /* 0 keeps the inscribed square (707) */
   int no_bottom_bar;       /* the board has no button hints to show */
+  int no_top_band;         /* no touch: the header line starts at the top of the area */
   int body_rows_cap;       /* most body lines a text screen may use; 0 = no cap */
   int robot_face;          /* draw the board's own robot face instead of the mascot */
   const char* greeting;    /* idle headline; NULL keeps the translated default */

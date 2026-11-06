@@ -163,10 +163,10 @@ class Pen {
 //   eyes    centres (98, 110) and (142, 110); 17 px across, 23 px when curved
 //   mouth   centred on x 120: smile y 144..154, laugh 145..156, frown 138..148, "o" 138..148
 
-void draw_shell(Pen& p) {
+void draw_shell(Pen& p, uint16_t antenna) {
   const uint16_t ink = p.ink();
-  p.line(120, 78, 120, 64, 4.5f, ink);             // antenna stalk
-  p.disc(120, 57, 5.5f, ink);                     // ...and its ball
+  p.line(120, 78, 120, 56, 4.5f, ink);             // antenna stalk (longer, always ink)
+  p.disc(120, 49, 5.5f, antenna);                 // ...and its ball: the link lamp
   p.solid_round(58, 114, 10, 20, 3, ink);         // near ear, out past the head's edge
   p.solid_round(173, 114, 10, 20, 3, ink);        // far ear
   p.outline_round(68, 78, 105, 89, 14, 4, ink);   // head
@@ -265,14 +265,14 @@ void draw_zz(Pen& p, uint32_t frame) {
 float zoom() { return kZoom; }
 
 void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t level, uint16_t ink,
-          uint16_t bg) {
+          uint16_t bg, uint16_t antenna) {
   // Grow about the box's centre: the design frame maps to `size * zoom`, so the head
   // fills more of the panel. The canvas clips what leaves the hero band.
   const float grown = static_cast<float>(size) * kZoom;
   const int bx = x + size / 2 - static_cast<int>(grown / 2);
   const int by = y + size / 2 - static_cast<int>(grown / 2);
   Pen p(c, bx, by, static_cast<int>(grown), ink, bg);
-  draw_shell(p);
+  draw_shell(p, antenna);
 
   const bool blink = look != Look::Happy && look != Look::Sleeping && (frame % 45) < 2;
   const EyeStyle style = [&] {

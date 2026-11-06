@@ -279,6 +279,7 @@ hg::DisplayInfo SpiDisplay::info() const {
   di.calibration = cfg_.calibration;
   di.round_area_permille = cfg_.round_area_permille;
   di.no_bottom_bar = cfg_.no_bottom_bar;
+  di.no_top_band = cfg_.no_top_band;
   di.font_scale = cfg_.font_scale;
   return di;
 }

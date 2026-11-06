@@ -42,6 +42,7 @@ class Board:
     # Board-specific layout knobs the firmware reads from its display profile.
     round_area_permille: int = 0  # 0 keeps the inscribed square (707)
     no_bottom_bar: bool = False
+    no_top_band: bool = False
     body_rows_cap: int = 0
     robot_face: bool = False
     greeting: str | None = None
@@ -68,7 +69,8 @@ BOARDS = {
     # Noto/Montserrat font and a thin bezel (86% of the panel). Screenshots from this
     # board match the glass, so layout questions are answered here, not on the desk.
     "sim-moji": Board("sim-moji", 240, 240, scroll_buttons=False, round=True, touch=False,
-                       round_area_permille=860, no_bottom_bar=True, body_rows_cap=2,
+                       round_area_permille=860, no_bottom_bar=True, body_rows_cap=4,
+                       no_top_band=True,
                        robot_face=True, greeting="Hi, I'm Moji"),
     # A 1.8" rectangular 368x448 AMOLED touch board (e.g. ESP32-S3-Touch-AMOLED-1.8): no scroll buttons.
     "sim-368x448": Board("sim-368x448", 368, 448, scroll_buttons=False, touch=True),
@@ -195,6 +197,7 @@ class Simulator:
             round_panel=b.round, touch_screen=b.touch, update_capacity=UPDATE_SLOT_BYTES,
             update_pending=update_pending, power=True,
             round_area_permille=b.round_area_permille, no_bottom_bar=b.no_bottom_bar,
+            no_top_band=b.no_top_band,
             body_rows_cap=b.body_rows_cap, robot_face=b.robot_face, greeting=b.greeting)
         self._round_spans = _circle_spans(b.width, b.height) if b.round else None
         self._register_actions()

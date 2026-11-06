@@ -119,7 +119,8 @@ const Entry kSpanish[] = {
     {Msg::Authenticating, "Autenticando"},
     {Msg::ConnectingToHermes, "Conectando a Hermes"},
     {Msg::ConnectError, "Error: {0}"},
-    {Msg::RetryIn, "reintento en {0}s"},
+    // "en" drops to fit a 240 px round panel's line box at the 22 px face.
+    {Msg::RetryIn, "reintento {0}s"},
     {Msg::Attempt, "intento {0}"},
     // Pairing with Hermes
     {Msg::PairingCode, "Código {0}"},
@@ -143,24 +144,28 @@ const Entry kSpanish[] = {
     {Msg::CouldntSendRecording, "No se pudo enviar la grabación"},
     {Msg::NotConnected, "Sin conexión a Hermes"},
     {Msg::NewSessionIn, "Charla nueva en {0}s"},
-    {Msg::NewSession, "Charla nueva"},
+    {Msg::NewSession, "Nueva sesión"},
     {Msg::StartingNewSession, "Iniciando una charla nueva"},
     {Msg::Thinking, "Pensando"},
     {Msg::ButtonToStop, "{0}: detener"},
+    {Msg::Running, "En curso"},
     {Msg::Speaking, "Hablando"},
-    {Msg::HoldToReply, "Mantén para responder"},
+    {Msg::HoldToReply, "Pulsa y habla"},
     {Msg::ButtonToReply, "{0}: responder"},
     {Msg::NoReplyFromHermes, "Hermes no respondió"},
     {Msg::RequestFailed, "Hermes no pudo completar la solicitud"},
     // Questions, cards and images
-    {Msg::HermesAsks, "Hermes pregunta"},
+    // The title no longer fits the 240 px round header either; the question body
+    // below says it anyway.
+    {Msg::HermesAsks, "Pregunta"},
     {Msg::TapYes, "Toca: Sí"},
     {Msg::ButtonYes, "{0}: Sí"},
     {Msg::SwipeNo, "Desliza: No"},
     {Msg::ButtonNo, "{0}: No"},
     {Msg::HermesWaiting, "Hermes espera tu respuesta"},
-    {Msg::AnsweredYes, "Respondiste: sí"},
-    {Msg::AnsweredNo, "Respondiste: no"},
+    // "Dijo" keeps the two lines inside the 240 round dashboards value slot.
+    {Msg::AnsweredYes, "Dijo sí"},
+    {Msg::AnsweredNo, "Dijo no"},
     {Msg::Image, "Imagen"},
     // Ready screen
     {Msg::Ready, "Listo"},
@@ -179,11 +184,12 @@ const Entry kSpanish[] = {
     {Msg::NoSessions, "Sin sesiones"},
     {Msg::DashStatus, "Estado"},
     {Msg::NWaiting, "{0} esperan"},
-    {Msg::NBusy, "{0} activas"},
-    {Msg::AllIdle, "Todo libre"},
+    {Msg::NBusy, "{0} act."},  // the dash value slot holds ~9 columns on the 240 round
+    {Msg::AllIdle, "Libres"},  // the headline at the larger scale fits 8 cells
     {Msg::DashApproval, "aprobar"},
-    {Msg::DashBusy, "ocupada"},
-    {Msg::DashIdle, "en reposo"},
+    // One-word states for the dashboard value slot at the 22 px Latin face.
+    {Msg::DashBusy, "tarea"},
+    {Msg::DashIdle, "libre"},
     // Top bar
     {Msg::LinkOffline, "SIN CONEXIÓN"},
     {Msg::LinkNoNet, "SIN RED"},

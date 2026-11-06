@@ -21,7 +21,7 @@ using Frame = std::vector<uint16_t>;
 Frame render(hg::robot::Look look, uint32_t frame = 10, uint8_t level = 0) {
   Frame fb(static_cast<size_t>(kCanvas) * kCanvas, kBg);
   hg::Canvas c(fb.data(), kCanvas, kCanvas, false);
-  hg::robot::draw(c, kBoxX, kBoxY, kBox, look, frame, level, kInk, kBg);
+  hg::robot::draw(c, kBoxX, kBoxY, kBox, look, frame, level, kInk, kBg, kInk);
   return fb;
 }
 
