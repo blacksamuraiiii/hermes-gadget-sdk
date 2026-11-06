@@ -626,6 +626,29 @@ TEST("app: lost connections retry with backoff") {
   CHECK_EQ(r.fake.connects, before + 1);
 }
 
+TEST("app: a routine gateway restart does not put a connect error on the screen") {
+  Rig r;
+  r.app.begin();
+  r.app.on_network(true, "test-wifi");
+  r.advance(1000);  // the first connect attempt never opens
+  auto last_close = [&r] {
+    hg::json::Value v;
+    CHECK(hg::json::parse(r.app.console("diag").substr(6), v));
+    return v["connection"]["last_close"].as_string();
+  };
+  // A gateway restart outlives the 10 s connect window: the first misses are routine and the
+  // screen keeps saying "connecting" instead of reporting a fault.
+  r.advance(12000);
+  CHECK_EQ(last_close(), std::string(""));
+  CHECK(r.app.screen() == hg::Screen::Connecting);
+  r.advance(15000);
+  CHECK_EQ(last_close(), std::string(""));
+  CHECK(r.app.screen() == hg::Screen::Connecting);
+  // A run of them is a real fault and does get reported.
+  r.advance(20000);
+  CHECK_EQ(last_close(), std::string("connect timeout"));
+}
+
 TEST("app: a silent server is detected by the heartbeat timeout") {
   Rig r;
   r.bring_online(true);
@@ -909,6 +932,81 @@ TEST("app: hero animation redraws only a slice of the screen") {
   CHECK(flushes > 0);
   // Each blink flushes only the eye rows (~25 of the 196-row mascot area).
   CHECK(rows / flushes < 60);
+}
+
+TEST("app: a wake hit shows the happy face for a moment, then lets it go") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(200);
+  r.app.on_wake_hit(1, 0.62f);
+  CHECK(r.app.model().emote == hg::Emote::Happy);
+  r.advance(2000);  // the recording has the screen; the face outlasts it and is still there
+  CHECK(r.app.model().emote == hg::Emote::Happy);
+  r.advance(1500);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+}
+
+TEST("app: a turn with no speech shows the sad face, then lets it go") {
+  Rig r;
+  r.fake.kv["talk_mode"] = "tap";
+  r.bring_online(true);
+  r.app.on_button(hg::Button::Talk, true);
+  r.app.on_button(hg::Button::Talk, false);
+  std::vector<int16_t> silence(1600, 20);  // 100 ms of a quiet room
+  for (int i = 0; i < 60 && r.fake.last("audio.cancel") == nullptr; ++i) {
+    r.app.on_mic_samples(silence.data(), silence.size());
+    r.advance(100);
+  }
+  CHECK(r.fake.last("audio.cancel") != nullptr);
+  CHECK(r.app.screen() == hg::Screen::Ready);
+  CHECK(r.app.model().emote == hg::Emote::Sad);
+  r.advance(3500);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+}
+
+TEST("app: an idle hero falls asleep after two minutes and wakes on a button") {
+  Rig r;
+  r.bring_online(true);
+  r.advance(2000);
+  CHECK(r.app.screen() == hg::Screen::Ready && r.app.model().hero);
+  CHECK(r.app.model().emote == hg::Emote::Auto);
+  // Ping to keep the session alive (three heartbeats at 20 s would otherwise time out).
+  for (int i = 0; i < 7; ++i) {
+    r.server(R"({"type":"ping","ts":1})");
+    r.advance(20000);
+  }
+  CHECK(r.app.screen() == hg::Screen::Ready);
+  CHECK(r.app.model().emote == hg::Emote::Sleeping);
+  r.app.on_button(hg::Button::Talk, true);
+  r.advance(100);
+  CHECK(r.app.model().emote != hg::Emote::Sleeping);
+}
+
+TEST("app: a face change repaints the whole face, not just the eyes") {
+  // A smile reaches down to the mouth, so going back to a neutral face has to repaint
+  // that far too: comparing against a fresh renderer catches a left-behind mouth.
+  hg::UiModel m;
+  m.screen = hg::Screen::Ready;
+  m.link = hg::Link::Online;
+  m.headline = "Hermes";
+  m.detail = "Ask me anything";
+  m.hero = true;
+  m.frame = 10;
+
+  FakeHal used;
+  used.make_round(240);
+  hg::Ui ui(used);
+  ui.render(m);
+  m.emote = hg::Emote::Happy;
+  ui.render(m);
+  m.emote = hg::Emote::Auto;
+  ui.render(m);
+
+  FakeHal clean;
+  clean.make_round(240);
+  hg::Ui fresh(clean);
+  fresh.render(m);
+  CHECK(used.fb == clean.fb);
 }
 
 TEST("app: holding CANCEL starts a new session; a short press still cancels") {
@@ -3124,8 +3222,10 @@ TEST("app: a turn that goes quiet leaves Responding by itself") {
 
 // --- The wake seam: one owner of the microphone at a time ---------------------
 // A cancelled recording used to leave the engine stopped until the next one, and ending
-// a recording used to resume it while the device was still thinking or playing the reply,
-// so the engine heard the device's own voice. Both are visible here.
+// a recording used to resume it while the reply was still playing, so the engine heard the
+// device's own voice. Both are visible here. The engine follows the microphone, not the
+// turn: it runs while a turn thinks (nobody else wants the samples) and steps back only for
+// a recording or the speaker.
 
 TEST("wake: the engine holds the microphone while idle and hands it over to a recording") {
   g_wake = WakeStandIn{};
@@ -3142,7 +3242,11 @@ TEST("wake: the engine holds the microphone while idle and hands it over to a re
   r.app.on_button(hg::Button::Talk, false);
   CHECK(r.app.screen() == hg::Screen::Thinking);
   r.advance(200);
-  CHECK(!g_wake.running);  // the recording ended, the turn still runs: stay quiet
+  // The recording ended and the speaker is quiet: the engine takes the microphone back even
+  // though the turn is still running. Waiting for Idle here cost up to 45 s of deafness after
+  // the answer had already finished playing (moji board, 2026-10-30).
+  CHECK(g_wake.running);
+  CHECK_EQ(g_wake.pauses, 1);
 }
 
 TEST("wake: a cancelled recording gives the microphone back") {

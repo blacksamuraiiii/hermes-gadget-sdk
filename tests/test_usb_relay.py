@@ -8,8 +8,11 @@ how a port Windows had stopped (device code 43) stayed invisible.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
+import time
+import types
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,3 +54,75 @@ def test_a_maximum_size_binary_frame_survives_the_codec():
     frames, lines = relay.SlipDecoder().feed(relay.encode_frame(relay.T_BINARY, payload))
     assert not lines
     assert frames == [(relay.T_BINARY, payload)]
+
+
+def _relay():
+    return relay.Relay(types.SimpleNamespace(port="COM-test", vid=0x303A, pid=0x1001,
+                                             target="ws://127.0.0.1:8765", path="/gadget"))
+
+
+def test_two_recoveries_in_flight_open_the_port_once():
+    """The watchdog, a read failure and a silent device all call recover_serial within a second.
+
+    Opening twice at once leaves the first handle open on the same port, and two readers then
+    split the bytes into frames neither can decode.
+    """
+    r = _relay()
+    opens = []
+
+    def slow_open():
+        opens.append(1)
+        time.sleep(0.05)  # long enough for the second caller to arrive
+
+    r.open_serial = slow_open
+
+    async def both():
+        await asyncio.gather(r.recover_serial("watchdog"), r.recover_serial("read failed"))
+
+    asyncio.run(both())
+    assert len(opens) == 1
+    assert r._recovering is False  # the guard is released, so a later outage can recover
+
+
+class _FakePort:
+    """A port that hands back its bytes once, then nothing (what a pulled cable looks like)."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def read(self, size: int) -> bytes:
+        data, self._data = self._data, b""
+        return data
+
+    def close(self) -> None:
+        pass
+
+
+def test_a_frame_the_ws_refuses_does_not_kill_the_serial_pump():
+    """A send into a just-closed WS raises; uncaught, the reader task dies and the device-to-Hermes
+    direction stops for good while the relay still looks alive."""
+    r = _relay()
+    sent = []
+
+    class BrokenWs:
+        async def send(self, payload: bytes) -> None:
+            sent.append(payload)
+            raise ConnectionError("the ws just closed")
+
+    r.ws = BrokenWs()
+    frame = relay.encode_frame(relay.T_TEXT, b"hello")
+    r.ser = _FakePort(frame + frame)  # two frames, the second after the first one broke the ws
+
+    async def pump():
+        task = asyncio.create_task(r.serial_reader())
+        await asyncio.sleep(0.4)
+        alive = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return alive
+
+    assert asyncio.run(pump()) is True
+    assert len(sent) == 1  # the first frame was tried; the link was dropped instead of the task

@@ -10,7 +10,7 @@ import time
 import pytest
 
 from hermes_gadget_plugin import dashboard
-from hermes_gadget_plugin.dashboard import SessionBoard, TileStore
+from hermes_gadget_plugin.dashboard import CardStore, SessionBoard, TileStore
 from test_hub_screen_sleep import Device, _wait, types
 
 
@@ -247,3 +247,61 @@ def test_capabilities_name_the_dashboard_version(online):
     assert session.dashboard_version == 1
     session.caps["dashboard"] = {"v": True}
     assert session.dashboard_version == 0
+
+
+def test_a_card_written_by_the_cli_is_read_by_the_gateway(tmp_path):
+    """'hermes gadget show' and the gateway are two processes: one file, atomic replace."""
+    cli, gateway = CardStore(tmp_path), CardStore(tmp_path)
+    card = cli.set("构建完成", "moji-0.3 已刷入", ttl_s=15, target="hg-1")
+    seen = gateway.read()
+    assert seen is not None
+    assert (seen["id"], seen["title"], seen["body"]) == (card["id"], "构建完成", "moji-0.3 已刷入")
+    assert seen["ttl_s"] == 15 and seen["target"] == "hg-1"
+    with pytest.raises(ValueError):
+        cli.set("   ", "  ")
+
+
+def test_a_card_nobody_picked_up_expires(tmp_path):
+    clock = Clock()
+    cli, gateway = CardStore(tmp_path, clock=lambda: clock.t), CardStore(tmp_path, clock=lambda: clock.t)
+    cli.set("提醒", "该喝水了", ttl_s=10)
+    assert gateway.read() is not None  # inside the pickup window
+    clock.t += 10 + dashboard.CARD_PICKUP_GRACE_S + 1
+    assert gateway.read() is None  # written while no gateway was up: it does not pop up hours later
+
+
+def test_a_broken_card_file_reads_as_no_card(tmp_path):
+    (tmp_path / CardStore.FILENAME).write_text("{not json", encoding="utf-8")
+    assert CardStore(tmp_path).read() is None
+    (tmp_path / CardStore.FILENAME).write_text('{"title": "no id"}', encoding="utf-8")
+    assert CardStore(tmp_path).read() is None
+
+
+def test_show_writes_a_card_for_that_device(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from hermes_gadget_plugin import cli as plugin_cli
+    from hermes_gadget_plugin.store import DeviceStore
+
+    store = DeviceStore(tmp_path / "plugin-data")
+    store.enroll("hg-1", bytes(range(32)), name="Desk", board="movecall-moji-esp32s3")
+    monkeypatch.setattr(plugin_cli, "_store", lambda: store)
+    monkeypatch.setattr(plugin_cli, "_cards", lambda: CardStore(tmp_path / "plugin-data"))
+    plugin_cli._cmd_show(SimpleNamespace(device="Desk", title="构建完成", body="0.3", ttl=5.0))
+    card = CardStore(tmp_path / "plugin-data").read()
+    assert card["target"] == "hg-1" and card["ttl_s"] == 5.0 and card["title"] == "构建完成"
+    assert "Card queued for Desk" in capsys.readouterr().out
+
+
+def test_show_refuses_a_device_that_never_enrolled(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from hermes_gadget_plugin import cli as plugin_cli
+    from hermes_gadget_plugin.store import DeviceStore
+
+    store = DeviceStore(tmp_path / "plugin-data")
+    monkeypatch.setattr(plugin_cli, "_store", lambda: store)
+    monkeypatch.setattr(plugin_cli, "_cards", lambda: CardStore(tmp_path / "plugin-data"))
+    plugin_cli._cmd_show(SimpleNamespace(device="Lamp", title="x", body="", ttl=5.0))
+    assert "No single gadget matches" in capsys.readouterr().out
+    assert CardStore(tmp_path / "plugin-data").read() is None

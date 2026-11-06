@@ -1,7 +1,7 @@
 # Faces
 
-The device draws a face on its screen: three 1-bit frames, idle, blink and talk, at 64, 96,
-144 and 192 px. **A face is built into the firmware**, so the shipped one is the Hermes Agent
+The device draws a face on its screen: five 1-bit frames — idle, blink, talk, happy and sad —
+at 64, 96, 144 and 192 px. **A face is built into the firmware**, so the shipped one is the Hermes Agent
 mascot, and changing it means building your own firmware image. Once built, `hermes gadget
 update` can install that image over the air. Release firmware, whether from
 `hermes gadget update --latest` or the browser installer, carries the default face, so a
@@ -53,7 +53,7 @@ Three things come out of it:
 | Output | What it is |
 |---|---|
 | `firmware/core/src/mascot_data.cpp` | The frames, ready to build. `--out` puts them elsewhere. |
-| `build/face-preview.png` | The three frames at all four sizes, on the device's background |
+| `build/face-preview.png` | The frames at all four sizes, on the device's background |
 | `build/face-check.png` | Your art with the eye boxes, lid lines, mouth and effect anchors on it |
 
 **Look at the check image first.** It is the only way to see whether the marks landed on the
@@ -173,9 +173,9 @@ hermes-gadget face my-face.png --mask bright --report
 
 `--report` prints how many bits each frame changes against idle, per size. The number that
 decides it is the 192 px one, because that is the largest the face is drawn on a 240x240
-screen. The shipped mascot changes **226 bits at 192 px** on a blink and 16 on talk, and the
-test suite asserts those two numbers. Anything in that range reads on the screen; much less
-and the blink is a flicker nobody notices.
+screen. The shipped mascot changes **226 bits at 192 px** on a blink, 16 on talk, 246 on happy
+and 109 on sad, and the test suite asserts all four numbers. Anything in that range reads on
+the screen; much less and the blink is a flicker nobody notices.
 
 ## Putting the mascot back
 
@@ -190,12 +190,17 @@ exactly, so there is nothing to keep in sync.
 
 The frames are 1-bit bitmaps: row major, most significant bit first, rows padded to a whole
 byte, a set bit meaning ink. Four sizes exist so the UI can pick the largest one that fits the
-space it has, and three frames exist so the face can blink and talk. Between them they take
-about 27 KB of flash. See [architecture.md](architecture.md) for where they are drawn.
+space it has, and five frames exist so the face can blink, talk, smile and frown. Between them
+they take about 43 KB of flash. See [architecture.md](architecture.md) for where they are drawn.
 
-The blink and talk frames are drawn on top of the idle frame: a blink covers each eye and cuts
-a closed lid into it, and a talking mouth is a hole cut into the ink. Both come from the
+The blink, talk, happy and sad frames are drawn on top of the idle frame: a blink covers each
+eye and cuts a closed lid into it, a talking mouth is a hole cut into the ink, a smile covers
+the eyes again but cuts upward arcs and opens the mouth wide, and a frown fills the mouth back
+in, cuts a downward arc, and cuts a teardrop below the near eye. All of them come from the
 feature positions above, which is why those positions matter.
+
+Sleeping has no frame of its own: it is the blink frame held still, with a "Z" drawn beside the
+head by `ui.cpp`.
 
 The effect anchors are written as thousandths of the drawn size, which is how `ui.cpp` reads
 them, so the waves and dots land where the artwork puts them.

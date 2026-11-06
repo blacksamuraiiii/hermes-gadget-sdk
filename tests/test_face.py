@@ -41,9 +41,9 @@ def arrays(text: str) -> dict[str, bytes]:
 def test_frames_are_well_formed(tmp_path):
     text = generate_mascot(tmp_path)
     data = arrays(text)
-    assert len(data) == 12, "three frames at four sizes"
+    assert len(data) == 20, "five frames at four sizes"
     for size, nbytes in EXPECTED.items():
-        for frame in ("Idle", "Blink", "Talk"):
+        for frame in ("Idle", "Blink", "Talk", "Happy", "Sad"):
             assert len(data[f"k{frame}{size}"]) == nbytes
     assert "const Anchors kAnchors = {" in text and "};" in text
 
@@ -52,8 +52,22 @@ def test_the_mascot_blinks_and_talks(tmp_path):
     """A blink frame equal to idle would be a silent failure: nothing to see."""
     data = arrays(generate_mascot(tmp_path))
     for size in EXPECTED:
-        for frame in ("Blink", "Talk"):
+        for frame in ("Blink", "Talk", "Happy", "Sad"):
             assert any(a != b for a, b in zip(data[f"kIdle{size}"], data[f"k{frame}{size}"])), size
+
+
+def test_the_new_faces_move_enough_to_see():
+    """Happy and sad at 192 px, the size the screen draws, with the numbers pinned.
+
+    The floor is 100 bits: below that a new face reads as the old one. A change here
+    means the derivation moved, so look at build/mascot-preview.png before updating.
+    """
+    master = face.load_master(MASTER)
+    frames = face.mascot_frames(master)
+    idle = face.to_bits(frames["idle"], 192)
+    changed = {frame: sum(bin(a ^ b).count("1") for a, b in zip(idle, face.to_bits(frames[frame], 192)))
+               for frame in ("happy", "sad")}
+    assert changed == {"happy": 246, "sad": 109}
 
 
 def test_the_blink_is_big_enough_to_see():

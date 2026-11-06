@@ -96,8 +96,15 @@ int tri(uint32_t frame, int period) {
 }
 
 mascot::Frame mascot_frame(const UiModel& m) {
+  // Speaking wins: there are no happy-talk or sad-talk frames, so a timed face waits.
   if (m.screen == Screen::Responding && m.speaking) {
     return (m.frame / 2) % 2 ? mascot::Frame::Talk : mascot::Frame::Idle;
+  }
+  switch (m.emote) {
+    case Emote::Happy: return mascot::Frame::Happy;
+    case Emote::Sad: return mascot::Frame::Sad;
+    case Emote::Sleeping: return mascot::Frame::Blink;  // closed eyes, all the time
+    case Emote::Auto: break;
   }
   return m.frame % 45 < 2 ? mascot::Frame::Blink : mascot::Frame::Idle;  // blink every ~4.5 s
 }
@@ -106,7 +113,7 @@ mascot::Frame mascot_frame(const UiModel& m) {
 // a still mascot never triggers a redraw.
 uint32_t hero_anim_key(const UiModel& m) {
   Hash h;
-  h.val(mascot_frame(m));
+  h.val(mascot_frame(m)).val(m.emote);  // sleeping is a constant frame, so the face itself must count
   switch (m.screen) {
     case Screen::Listening: h.val(m.frame % 3).val(m.level / 20); break;
     case Screen::Thinking:
@@ -301,14 +308,24 @@ void Ui::draw_frame(const UiModel& m) {
     uint32_t anim = hero_anim_key(m);
     int y0 = y_header, y1 = y_bottom;
     bool redraw = !valid_ || !hero_valid_ || stat != hero_static_;
+    int next_y0 = -1, next_y1 = -1;
     if (!redraw && anim != hero_anim_) {
-      hero_anim_rows(m, y0, y1);  // only what can move
+      int ny0 = y0, ny1 = y1;
+      hero_anim_rows(m, ny0, ny1);  // only what can move
+      y0 = std::min(ny0, hero_painted_y0_);
+      y1 = std::max(ny1, hero_painted_y1_);
+      next_y0 = ny0;
+      next_y1 = ny1;
       redraw = true;
     }
     if (redraw) {
       c.set_clip_rows(y0, y1);
       draw_hero(c, m);
       flush(y0, y1);
+      // The band is consistent now, so remember only the rows that can move next time.
+      if (next_y0 < 0) hero_anim_rows(m, next_y0, next_y1);
+      hero_painted_y0_ = next_y0;
+      hero_painted_y1_ = next_y1;
     }
     hero_static_ = stat;
     hero_anim_ = anim;
@@ -788,6 +805,18 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
     }
     default: break;
   }
+  switch (m.emote) {
+    case Emote::Sleeping: {  // the "Z", which sits where the thinking dots go
+      int ty = my + size * a.head_top_right.y / 1000;
+      add(ty - size / 6, ty + size / 12);
+      break;
+    }
+    case Emote::Happy:  // the smile is the eyes and the mouth, both baked into the frame
+    case Emote::Sad:  // the tear below the near eye and the frown, likewise
+      add(my + size * a.eyes_y0 / 1000, my + size * a.mouth_y1 / 1000);
+      break;
+    default: break;
+  }
   y0 = std::max(top - 1, layout_.top_h);
   y1 = std::min(bottom + 2, static_cast<int>(info_.height) - layout_.bottom_h);
 }
@@ -842,6 +871,13 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
     case Screen::Connecting:
     case Screen::Updating: dots(kAccent, kAccentDim); break;
     default: break;
+  }
+  if (m.emote == Emote::Sleeping) {
+    // Asleep: the frame has the closed eyes already, so only the "Z" goes on top.
+    const int zs = std::max(1, size / 96);
+    int tx = mx + size * a.head_top_right.x / 1000;
+    int ty = my + size * a.head_top_right.y / 1000 - Canvas::line_height(zs) - size / 40;
+    c.text(tx, ty, "Z", zs, kText);
   }
 
   // Caption: headline, then the detail lines, centred.

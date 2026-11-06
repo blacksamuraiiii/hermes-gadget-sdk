@@ -36,6 +36,7 @@ constexpr int kCommandWindowMs = 6000;     // how long MultiNet keeps listening 
 constexpr int16_t kMaxHitScore = 100;
 
 hg::AudioIn* g_mic = nullptr;
+srmodel_list_t* g_models = nullptr;
 const esp_afe_sr_iface_t* g_afe = nullptr;
 esp_afe_sr_data_t* g_afe_data = nullptr;
 esp_mn_iface_t* g_mn = nullptr;
@@ -72,6 +73,7 @@ void on_mic(const int16_t* samples, size_t count) {
   }
   size_t sent = 0;
   if (produced) sent = xStreamBufferSend(g_queue, g_tap_out, produced * sizeof(int16_t), 0);
+#if defined(HG_WAKE_DIAG)
   int peak = 0;
   for (size_t i = 0; i < count; ++i) {
     const int v = samples[i] < 0 ? -samples[i] : samples[i];
@@ -87,6 +89,9 @@ void on_mic(const int16_t* samples, size_t count) {
              static_cast<unsigned>(xStreamBufferSpacesAvailable(g_queue)));
     g_tap_peak = 0;
   }
+#else
+  (void)sent;  // only the diagnostics print it
+#endif
 }
 
 void report_hit() {
@@ -125,9 +130,11 @@ void task(void*) {
       }
       continue;
     }
+#if defined(HG_WAKE_DIAG)
     if (++g_feeds % 200 == 0) {
       ESP_LOGI(TAG, "feeds %u", static_cast<unsigned>(g_feeds));
     }
+#endif
     // One fetch per feed: the frame just queued is what comes back, and a pause does not have
     // to wait out a blocking fetch in the AFE.
     afe_fetch_result_t* fetched = g_afe->fetch_with_delay(g_afe_data, pdMS_TO_TICKS(50));
@@ -201,6 +208,31 @@ void wake_feed(const int16_t*, size_t) {
 
 namespace hgp {
 
+// Release everything wake_attach built before it failed. The engine is optional — the board is
+// still a reminder screen without it — so a half-built one must not keep its PSRAM, its stream
+// buffer, or the model partition's SPIFFS handle open for the rest of the boot. Every failure
+// path below calls this, so a retry starts from zero instead of leaking a second copy.
+static void wake_release() {
+  if (g_queue) {
+    vStreamBufferDelete(g_queue);
+    g_queue = nullptr;
+  }
+  if (g_cvt) {
+    esp_ae_rate_cvt_close(g_cvt);
+    g_cvt = nullptr;
+  }
+  if (g_mn_data && g_mn) g_mn->destroy(g_mn_data);
+  g_mn_data = nullptr;
+  if (g_afe_data && g_afe) g_afe->destroy(g_afe_data);
+  g_afe_data = nullptr;
+  g_afe = nullptr;
+  if (g_models) {
+    esp_srmodel_deinit(g_models);
+    g_models = nullptr;
+  }
+  g_feed_chunk = 0;
+}
+
 void wake_attach(hg::AudioIn* mic) {
   g_mic = mic;
   if (g_ready.load()) return;
@@ -210,12 +242,16 @@ void wake_attach(hg::AudioIn* mic) {
   if (!mn_name) {
     ESP_LOGE(TAG, "wake word: no Chinese MultiNet model in the `model` partition (%s)",
              models ? "model partition empty" : "partition `model` missing");
+    if (models) esp_srmodel_deinit(models);
     return;
   }
+  // Kept so a later failure can release it: the model list holds the SPIFFS handle open.
+  g_models = models;
 
   afe_config_t* cfg = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_LOW_COST);
   if (!cfg) {
-    ESP_LOGE(TAG, "wake word: afe_config_init failed");
+    ESP_LOGE(TAG, "wake word: afe_config_init failed; the engine stays off");
+    wake_release();
     return;
   }
   // One analog microphone and no clean playback reference, so no AEC: the app keeps the engine
@@ -229,14 +265,16 @@ void wake_attach(hg::AudioIn* mic) {
   g_afe_data = g_afe ? g_afe->create_from_config(cfg) : nullptr;
   afe_config_free(cfg);
   if (!g_afe_data) {
-    ESP_LOGE(TAG, "wake word: the AFE did not start (out of PSRAM?)");
+    ESP_LOGE(TAG, "wake word: the AFE did not start (out of PSRAM?); the engine stays off");
+    wake_release();
     return;
   }
 
   g_mn = esp_mn_handle_from_name(mn_name);
   g_mn_data = g_mn ? g_mn->create(mn_name, kCommandWindowMs) : nullptr;
   if (!g_mn_data) {
-    ESP_LOGE(TAG, "wake word: MultiNet model %s did not start", mn_name);
+    ESP_LOGE(TAG, "wake word: MultiNet model %s did not start; the engine stays off", mn_name);
+    wake_release();
     return;
   }
   // Lower Kconfig value = more sensitive, which is the same direction as the model's probability
@@ -250,10 +288,11 @@ void wake_attach(hg::AudioIn* mic) {
   }
   ESP_LOGI(TAG, "wake word: %d samples per MultiNet frame", g_mn->get_samp_chunksize(g_mn_data));
 
-  // TEMPORARY (bring-up): 0.05 instead of CONFIG_HG_WAKE_THRESHOLD/100, so the console shows
-  // the score of every command word instead of only the ones over the shipped threshold.
-  // Restore the Kconfig mapping once the distribution is measured.
-  const float threshold = 0.05f;
+  // Kconfig gives a percentage: lower is more sensitive, the same direction as the model's
+  // probability threshold. Bring-up pinned this to 0.05 to print every command's score; the
+  // shipped value is the Kconfig one again, and the log below prints the value actually set so
+  // the README's expected log can't drift away from the code.
+  const float threshold = CONFIG_HG_WAKE_THRESHOLD / 100.0f;
   g_mn->set_det_threshold(g_mn_data, threshold);
 
   esp_ae_rate_cvt_cfg_t cvt = {};
@@ -264,25 +303,28 @@ void wake_attach(hg::AudioIn* mic) {
   cvt.complexity = 2;  // middle of 1..3: quality matters more than a few percent of one core
   cvt.perf_type = ESP_AE_RATE_CVT_PERF_TYPE_SPEED;
   if (esp_ae_rate_cvt_open(&cvt, &g_cvt) != ESP_AE_ERR_OK || !g_cvt) {
-    ESP_LOGE(TAG, "wake word: the rate converter did not start");
+    ESP_LOGE(TAG, "wake word: the rate converter did not start; the engine stays off");
     g_cvt = nullptr;
+    wake_release();
     return;
   }
 
   g_queue = xStreamBufferCreate(kQueueBytes, sizeof(int16_t));
   if (!g_queue) {
-    ESP_LOGE(TAG, "wake word: out of memory for the sample queue");
+    ESP_LOGE(TAG, "wake word: out of memory for the sample queue; the engine stays off");
+    wake_release();
     return;
   }
   g_feed_chunk = g_afe->get_feed_chunksize(g_afe_data);
   if (g_feed_chunk <= 0 || static_cast<size_t>(g_feed_chunk) > sizeof(g_feed) / sizeof(int16_t)) {
-    ESP_LOGE(TAG, "wake word: unexpected AFE frame size %d", g_feed_chunk);
+    ESP_LOGE(TAG, "wake word: unexpected AFE frame size %d; the engine stays off", g_feed_chunk);
+    wake_release();
     return;
   }
   xTaskCreate(&task, "hg-wake", 4096, nullptr, 5, nullptr);
   g_ready = true;
-  ESP_LOGI(TAG, "wake word ready: %s, threshold %d, frame %d samples at %u Hz", mn_name,
-           CONFIG_HG_WAKE_THRESHOLD, g_feed_chunk, static_cast<unsigned>(kAfeRate));
+  ESP_LOGI(TAG, "wake word ready: %s, threshold %.2f, frame %d samples at %u Hz", mn_name,
+           static_cast<double>(threshold), g_feed_chunk, static_cast<unsigned>(kAfeRate));
 }
 
 }  // namespace hgp

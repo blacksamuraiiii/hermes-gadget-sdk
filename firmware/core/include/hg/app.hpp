@@ -224,6 +224,9 @@ class App {
   void settings_input(Button button, bool pressed);
   void settings_tick();
   void settings_model();
+  // A face that outranks the screen's own for a while (happy, sad). The caller's
+  // update_model() draws it; this only records it.
+  void set_emote(Emote e, uint32_t ms);
   void stop_hardware_check();
   void power_tick();
   json::Value power_value() const;
@@ -351,6 +354,9 @@ class App {
   uint32_t heartbeat_ms_ = 20000;
   int backoff_ = 0;
   int attempts_ = 0;
+  // Connect attempts that never reached a handshake, in a row. A gateway restart outlives the
+  // connect window, so the first misses are routine and must not put an error on the screen.
+  int connect_misses_ = 0;
   std::string fatal_;   // unrecoverable until reconfigured
   std::string last_close_;
 
@@ -380,6 +386,11 @@ class App {
   uint32_t last_turn_rx_ = 0;
   std::string reply_;
   uint32_t reply_until_ = 0;  // reply text shown on the Ready screen until then
+  // The emote override, and the clock sleeping reads. idle_since_ is the last moment the
+  // app was not idle; tick() keeps it, so no mode assignment has to remember to.
+  uint32_t idle_since_ = 0;
+  uint32_t emote_until_ = 0;
+  Emote emote_ = Emote::Auto;
   bool cancel_held_ = false;
   bool cancel_long_fired_ = false;
   uint32_t cancel_down_at_ = 0;

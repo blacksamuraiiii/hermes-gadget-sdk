@@ -214,6 +214,60 @@ class TileStore:
         return out[:MAX_TILES]
 
 
+CARD_PICKUP_GRACE_S = 60.0  # a card written while the gateway was down still shows if picked up
+
+
+class CardStore:
+    """A card pushed from outside a turn: ``card.json``, written by the CLI, read by the gateway.
+
+    Same pattern as ``TileStore`` — one file, an atomic replace, an expiry — because the CLI and
+    the gateway are separate processes. ``hermes gadget show`` writes it and the adapter polls it,
+    so a script, a hook or a cron job can put a line on the screen without starting a turn.
+    """
+
+    FILENAME = "card.json"
+
+    def __init__(self, directory: Path | str, clock: Callable[[], float] = time.time):
+        self.path = Path(directory) / self.FILENAME
+        self._clock = clock
+
+    def set(self, title: str, body: str = "", *, ttl_s: float = 20.0, target: str | None = None) -> dict:
+        """Queue a card. ``target`` limits it to one device id; ``ttl_s`` is its time on screen."""
+        title, body = title.strip(), body.strip()
+        if not title and not body:
+            raise ValueError("a card needs a title or a body")
+        ttl = max(1.0, float(ttl_s))
+        card = {"id": f"{time.time_ns():x}-{os.getpid()}", "title": title, "body": body, "ttl_s": ttl,
+                "expires": self._clock() + ttl + CARD_PICKUP_GRACE_S}
+        if target:
+            card["target"] = target
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(card, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, self.path)
+        return card
+
+    def read(self) -> dict | None:
+        """The card to show, or None when there is none, it is malformed, or it has expired."""
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
+            return None
+        expires = raw.get("expires")
+        if isinstance(expires, (int, float)) and expires <= self._clock():
+            return None
+        return raw
+
+    def clear(self) -> bool:
+        try:
+            self.path.unlink()
+        except OSError:
+            return False
+        return True
+
+
 def message(sessions: list[dict], tiles: list[dict], *, charset: str = "ascii", cols: int | None = None) -> dict:
     """The ``dashboard`` message for one device: text folded to its charset and cut to its line."""
     width = cols if isinstance(cols, int) and cols > 4 else 40

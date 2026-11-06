@@ -50,6 +50,26 @@ DISPLAY_SCHEMA = {
     },
 }
 
+WEATHER_SCHEMA = {
+    "name": "gadget_weather",
+    "description": "Today's weather and a short forecast for the place the gadget is set to "
+                   "(QWeather, already in Chinese). Use this instead of searching the web when "
+                   "someone asks about the weather.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "days": {"type": "integer", "description": "Forecast days, 1-10. Default 3."},
+            "place": {"type": "string",
+                      "description": "City name when the question names one (e.g. 南京); "
+                                     "omit for the place the gadget is set to."},
+            "show": {"type": "boolean",
+                     "description": "Also put the forecast on the gadget's screen. Default false."},
+            "device": _DEVICE_PARAM,
+        },
+        "required": [],
+    },
+}
+
 ACTION_SCHEMA = {
     "name": "gadget_action",
     "description": "Invoke an action a gadget exposes (for example an LED, relay, buzzer or volume control). "
@@ -179,17 +199,62 @@ def gadget_action(args: dict, **_kw) -> str:
     return json.dumps({"success": True, "device": session.name, "action": action, "result": result})
 
 
+def gadget_weather(args: dict, **_kw) -> str:
+    """The forecast as one line, and on the screen when asked."""
+    from . import weather
+
+    try:
+        days = max(1, min(10, int(args.get("days") or 3)))
+    except (TypeError, ValueError):
+        days = 3
+    try:
+        said = weather.answer(days=days, place=(args.get("place") or None))
+    except weather.WeatherError as exc:
+        return _error(str(exc))
+    result: dict[str, Any] = {"success": True, "answer": said}
+    if args.get("show"):
+        adapter = _adapter()
+        if adapter is None:
+            result["shown_error"] = "gadget hub is not running in this process"
+        else:
+            session, err = _resolve(adapter, args.get("device"))
+            if err or session is None:
+                result["shown_error"] = err or "no gadget to show it on"
+            elif (err := _usable(session)):
+                result["shown_error"] = err
+            else:
+                try:
+                    title, body = weather.card(days=days, place=(args.get("place") or None))
+                    _run(adapter, session.show_card(title, body, 300))
+                    result["shown_on"] = session.name
+                except Exception as exc:  # the answer is still worth returning
+                    result["shown_error"] = str(exc)
+    return json.dumps(result)
+
+
+def weather_available() -> bool:
+    """Weather needs the key and host, not a device: it answers a spoken question by itself."""
+    from . import weather
+
+    try:
+        weather.config()
+        return True
+    except weather.WeatherError:
+        return False
+
+
 def available() -> bool:
     """Reachability: tools work only in the process hosting the gadget hub."""
     return runtime.any_active()
 
 
 def register_tools(ctx) -> None:
-    for schema, handler, emoji in (
-        (DEVICES_SCHEMA, gadget_devices, "📟"),
-        (DISPLAY_SCHEMA, gadget_display, "🖥️"),
-        (ACTION_SCHEMA, gadget_action, "🎛️"),
+    for schema, handler, emoji, check in (
+        (DEVICES_SCHEMA, gadget_devices, "📟", available),
+        (DISPLAY_SCHEMA, gadget_display, "🖥️", available),
+        (ACTION_SCHEMA, gadget_action, "🎛️", available),
+        (WEATHER_SCHEMA, gadget_weather, "🌤️", weather_available),
     ):
         ctx.register_tool(
             name=schema["name"], toolset=TOOLSET, schema=schema, handler=handler,
-            check_fn=available, description=schema["description"], emoji=emoji)
+            check_fn=check, description=schema["description"], emoji=emoji)

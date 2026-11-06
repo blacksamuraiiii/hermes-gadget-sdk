@@ -96,3 +96,9 @@ idf_component_register(
         mbedtls
         esp_websocket_client
 )
+
+# Bring-up counters for the wake path (Kconfig: Wake word bring-up diagnostics). Off in a
+# release build, so the relay log keeps only `hit:` and the lifecycle lines.
+if(CONFIG_HG_WAKE_DIAG)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE HG_WAKE_DIAG=1)
+endif()

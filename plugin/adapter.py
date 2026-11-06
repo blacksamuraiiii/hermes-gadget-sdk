@@ -69,12 +69,18 @@ PAIRING_GRACE_S = 6.0
 UPDATE_POLL_S = 3.0           # how often staged firmware ('hermes gadget update') is looked for
 RELAY_WATCH_S = 120.0         # how often the configured USB relay is checked and restarted
 DASHBOARD_POLL_S = 2.0        # how often tiles ('hermes gadget tile') and expiries are looked at
+CARD_POLL_S = 2.0             # how often a card from 'hermes gadget show' is looked for
+WAITING_CARD_S = 45.0         # how long the 'waiting for you' card stays on a board without a dashboard
 DASHBOARD_SETTLE_S = 0.3      # session changes this close together go out as one dashboard
 # Trigger text for Hermes's unauthorized-DM flow. Never reaches the agent while the
 # device is unpaired; if approval races it, it is a cheap read-only command.
 PAIRING_TRIGGER = "/status"
 HOST_ONLY_TEXT = "Can't show all of it here. Approve or deny it on the host."
 VOICE_OFF_NOTICE = "Voice is off. This screen only shows reminders."
+# A model that wants a tool the profile no longer has emits the call as text
+# ("<｜｜DSML｜｜ calls>…"). textfmt strips the marker; when the whole reply was such a
+# call there is nothing left to show or say, and a blank screen reads as a hang.
+EMPTY_REPLY_NOTICE = "这条回复是空的，请再问一次。"
 # A short press or a silent capture used to start a turn whose transcript came back empty, hanging
 # the device on "thinking" for half an hour. Both are dropped before Hermes sees them; the rules
 # live in audio.utterance_rejection so they can be tested without Hermes.
@@ -203,10 +209,18 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         # Empty = manage the relay yourself (tools/relay.sh).
         self._relay_start_cmd = str(extra.get("relay_start") or "").strip()
         self._relay_stop_cmd = str(extra.get("relay_stop") or "").strip()
+        # Off by default: the board is not always plugged in, and a relay restart every two minutes
+        # only churns COM5 when it is not. Turn it on for a board that stays wired and must come
+        # back by itself after the relay crashes.
+        self._relay_watch_on = _flag(extra.get("relay_watch"), False)
         self._relay_task: Optional[asyncio.Task] = None
         self._reminder_min_turn_s = float(extra.get("reminder_min_turn_s") or notify.MIN_TURN_S)
         self._cue_cache: Dict[Tuple[str, int], bytes] = {}
         self._tiles: Optional[dashboard.TileStore] = None
+        self._cards: Optional[dashboard.CardStore] = None
+        self._card_shown: Optional[str] = None
+        self._card_task: Optional[asyncio.Task] = None
+        self._waiting_shown: Dict[str, set] = {}
         self._dashboard_task: Optional[asyncio.Task] = None
         self._dashboard_wake: Optional[asyncio.Event] = None
         self._board_unsubscribe = None
@@ -318,7 +332,8 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             return False
         # The USB relay dials back into this port, so it starts once we are listening.
         await self.start_relay_if_configured()
-        if self._relay_start_cmd and (self._relay_task is None or self._relay_task.done()):
+        if self._relay_watch_on and self._relay_start_cmd and (
+                self._relay_task is None or self._relay_task.done()):
             self._relay_task = asyncio.create_task(self._watch_relay())
         self._loop = asyncio.get_running_loop()
         self._registry_key = getattr(self, "_owner_profile", None) or "default"
@@ -330,6 +345,9 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             self._dashboard_wake = asyncio.Event()
             self._board_unsubscribe = dashboard.BOARD.subscribe(self._board_changed)
             self._dashboard_task = asyncio.create_task(self._watch_dashboard())
+        # Cards pushed from outside a turn work on any board, dashboard or not.
+        self._cards = dashboard.CardStore(plugin_data_dir(PLATFORM_NAME))
+        self._card_task = asyncio.create_task(self._watch_cards())
         self._mark_connected()
         notify.BRIDGE.configure(enabled=self._reminders_on, min_turn_s=self._reminder_min_turn_s)
         self._wire_plugin_handlers(None)
@@ -342,10 +360,12 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if self._board_unsubscribe:
             self._board_unsubscribe()
             self._board_unsubscribe = None
-        for task in (self._watch_task, self._update_task, self._dashboard_task, self._relay_task):
+        for task in (self._watch_task, self._update_task, self._dashboard_task, self._relay_task,
+                     self._card_task):
             if task:
                 task.cancel()
         self._watch_task = self._update_task = self._dashboard_task = self._relay_task = None
+        self._card_task = None
         if self._hub:
             await self._hub.stop()
             self._hub = None
@@ -445,6 +465,69 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
                 await self._push_dashboard()
             except Exception as exc:
                 logger.debug("[%s] dashboard update failed: %s", self.name, exc)
+
+    async def _watch_cards(self) -> None:
+        """Show cards pushed from outside a turn ('hermes gadget show'), once each.
+
+        The CLI writes card.json and this polls it, so a script, a hook or a cron job can put a
+        line on the screen without starting a turn or spending a token. The same tick keeps boards
+        that draw no dashboard told that Hermes waits for an approval.
+        """
+        while True:
+            await asyncio.sleep(CARD_POLL_S)
+            if self._hub is None:
+                continue
+            await self._remind_waiting()
+            if self._cards is None:
+                continue
+            try:
+                card = self._cards.read()
+            except Exception as exc:  # noqa: BLE001 - a bad file must not stop the poll
+                logger.debug("[%s] card file unreadable: %s", self.name, exc)
+                continue
+            if card is None or card["id"] == self._card_shown:
+                continue
+            self._card_shown = card["id"]
+            await self._deliver_card(card)
+
+    async def _remind_waiting(self) -> None:
+        """Card 'waiting for you' on boards that draw no dashboard, once per waiting session."""
+        if self._hub is None:
+            return
+        waiting = {row["id"] for row in dashboard.BOARD.sessions() if row.get("state") == "waiting"}
+        for session in list(self._hub.sessions.values()):
+            if not session.paired or session.closed or session.dashboard_version >= 1:
+                continue  # a dashboard already carries the waiting row
+            seen = self._waiting_shown.setdefault(session.device_id, set())
+            fresh = waiting - seen
+            seen &= waiting  # one that left 'waiting' can card again next time
+            if not fresh:
+                continue
+            title = textfmt.for_device("等待你确认", session.charset) or "Waiting for you"
+            body = textfmt.for_device("在主机上批准或拒绝", session.charset) or "Approve or deny on the host"
+            try:
+                await session.show_card(title, body, ttl_s=WAITING_CARD_S)
+                logger.info("[%s] waiting card on %s (%d session(s))", self.name, session.device_id, len(fresh))
+            except Exception as exc:  # noqa: BLE001 - one device must not stop the others
+                logger.debug("[%s] waiting card failed on %s: %s", self.name, session.device_id, exc)
+
+    async def _deliver_card(self, card: dict) -> None:
+        if self._hub is None:
+            return
+        target = card.get("target")
+        title, body = str(card.get("title") or ""), str(card.get("body") or "")
+        try:
+            ttl_s = float(card.get("ttl_s") or 20.0)
+        except (TypeError, ValueError):
+            ttl_s = 20.0
+        for session in list(self._hub.sessions.values()):
+            if not session.paired or session.closed or (target and session.device_id != target):
+                continue
+            try:
+                await session.show_card(title, body, ttl_s=ttl_s)
+                logger.info("[%s] card shown on %s: %s", self.name, session.device_id, title or body)
+            except Exception as exc:  # noqa: BLE001 - one device must not stop the others
+                logger.warning("[%s] card not shown on %s: %s", self.name, session.device_id, exc)
 
     async def _push_dashboard(self, only: Optional[DeviceSession] = None) -> None:
         if self._hub is None or self._tiles is None:
@@ -647,6 +730,10 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if not session.paired:
             await self._forward_unpaired(session, content)
             return SendResult(success=True, message_id=uuid.uuid4().hex[:12])
+        raw_content = content or ""
+        content = textfmt.strip_tool_tokens(raw_content)
+        if raw_content.strip() and not content.strip():
+            content = EMPTY_REPLY_NOTICE  # the whole reply was a tool-call marker: never blank the screen
         heard = transcript_echo(content or "")
         if heard is not None:
             # Show what speech-to-text heard as the user's line, not as a reply.
@@ -937,6 +1024,28 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         if caption:
             await self.send(chat_id, caption, metadata=metadata)
         return result
+
+    async def _synthesize_auto_tts(self, text_content: str):
+        """Speak the reply with raw tool-call markers stripped.
+
+        Hermes synthesizes the reply text before :meth:`send` sees it, so cleaning only the
+        screen path would still let a ``<｜｜DSML｜｜ calls>`` block be read aloud.
+        """
+        raw_content = text_content or ""
+        clean = textfmt.strip_tool_tokens(raw_content)
+        if raw_content.strip() and not clean.strip():
+            clean = EMPTY_REPLY_NOTICE
+        return await super()._synthesize_auto_tts(clean)
+
+    def prepare_tts_text(self, text: str) -> str:
+        """Speak temperatures in Chinese.
+
+        Hermes's normalizer expands ``22°C`` to ``22 degrees Celsius``; a zh-CN voice reads
+        that as "deg C". Convert to 摄氏度 first, then let the base cleanup run.
+        """
+        spoken = textfmt.speak_celsius(text or "")
+        base = getattr(super(), "prepare_tts_text", None)
+        return base(spoken) if base is not None else textfmt.strip_markdown(spoken)
 
     def supports_streaming_tts(self, chat_id: str, audio_format: AudioFormat) -> bool:
         session = self._session(chat_id)

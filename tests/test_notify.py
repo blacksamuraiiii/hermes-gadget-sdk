@@ -90,10 +90,34 @@ def test_the_same_approval_does_not_ring_twice(announced, bridge):
     assert len(announced) == 1
 
 
-def test_two_approvals_at_once_ring_once(announced, bridge):
+def test_two_different_approvals_both_ring(announced, bridge):
+    # Two different requests inside one cooldown are two things to look at (B3). The old
+    # cue-wide window swallowed the second one's card and cue.
     bridge.on_human_input_request(kind="approval", platform="cli", request_id="r1")
     bridge.on_human_input_request(kind="approval", platform="cli", request_id="r2")
-    assert len(announced) == 1  # one errand, one cue; the second is inside the cooldown
+    assert len(announced) == 2
+
+
+def test_one_request_rings_once_but_the_next_one_passes(announced, bridge):
+    # The dedupe key is the request id: the same errand reported twice is one reminder, a
+    # different errand in the same second is not.
+    bridge.on_human_input_request(kind="approval", platform="cli", request_id="r1")
+    bridge.on_human_input_request(kind="approval", platform="cli", request_id="r1")
+    assert len(announced) == 1
+    bridge.on_human_input_request(kind="approval", platform="cli", request_id="r2")
+    assert len(announced) == 2
+
+
+def test_a_finished_turn_with_no_id_still_rings_once_per_cue(announced, bridge):
+    # "done" carries no request id, so its cue is the only thing to compare: two turns ending
+    # within the cooldown stay one ring.
+    bridge.pre_llm_call(session_id="s1", platform="cli")
+    bridge.pre_llm_call(session_id="s2", platform="cli")
+    bridge.clock.tick(notify.MIN_TURN_S + 5)  # both are long enough to be worth a ring
+    bridge.on_session_end(session_id="s1", platform="cli")
+    bridge.clock.tick(2.0)  # still inside the cooldown
+    bridge.on_session_end(session_id="s2", platform="cli")
+    assert len(announced) == 1
 
 
 def test_an_approval_after_the_cooldown_rings_again(announced, bridge):

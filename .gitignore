@@ -41,3 +41,4 @@ tools/*.log
 # Release images live in GitHub Releases, not in git: a 1.4 MB image per version
 # in history is what this rule exists to stop. Keep README.md and SHA256SUMS here.
 firmware/releases/*/*.bin
+/build-host/

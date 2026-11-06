@@ -11,7 +11,7 @@ import json
 import urllib.error
 import urllib.request
 
-RELEASES = "https://github.com/Adolanium/hermes-gadget-sdk/releases"
+RELEASES = "https://github.com/blacksamuraiiii/hermes-gadget-sdk/releases"
 TIMEOUT_S = 30
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_APP_BYTES = 8 * 1024 * 1024
@@ -56,10 +56,20 @@ def build_for(manifest: dict, board: str) -> dict:
     raise ReleaseError(f"The latest release ({manifest['version']}) has no firmware for {board}. Its boards: {boards}.")
 
 
+def download_base(manifest: dict) -> str:
+    """The download path of a release: its ``tag`` when the manifest names one, else ``v<version>``.
+
+    This fork tags its releases ``moji-0.X`` while the firmware reports ``0.X.0``, so
+    ``download/v<version>`` would 404. Upstream manifests carry no ``tag`` and keep the old form.
+    """
+    tag = manifest.get("tag")
+    return tag if isinstance(tag, str) and tag else f"v{manifest['version']}"
+
+
 def download_app(manifest: dict, build: dict) -> bytes:
     """The build's app image, checked against the manifest's size and SHA-256."""
     app = build["app"]
-    data = _get(f"{RELEASES}/download/v{manifest['version']}/{app['path']}", MAX_APP_BYTES)
+    data = _get(f"{RELEASES}/download/{download_base(manifest)}/{app['path']}", MAX_APP_BYTES)
     if len(data) != app["size"] or hashlib.sha256(data).hexdigest() != app["sha256"]:
         raise ReleaseError(f"{app['path']} doesn't match the checksum in the release's manifest, so it wasn't used.")
     return data

@@ -16,6 +16,9 @@ namespace {
 constexpr uint32_t kBootScreenMs = 800;
 constexpr uint32_t kConnectTimeoutMs = 10000;
 constexpr uint32_t kHandshakeTimeoutMs = 10000;
+// Connect misses tolerated before the screen reports one: a gateway restart takes longer than
+// kConnectTimeoutMs, and "connect timeout" during a routine restart reads as a device fault.
+constexpr int kConnectMissesBeforeError = 3;
 constexpr uint32_t kStableSessionMs = 30000;
 constexpr uint32_t kMinUtteranceMs = 350;
 constexpr uint32_t kMaxUtteranceMs = 30000;
@@ -42,6 +45,9 @@ constexpr uint32_t kManualScrollPauseMs = 15000;  // UP/DOWN pauses automatic pa
 constexpr uint8_t kCaptionLines = 3;          // detail lines on pairing, setup and card screens
 constexpr uint8_t kPromptLines = 4;           // ...and on a question (the renderer drops lines on small screens)
 constexpr uint32_t kFrameMs = 100;
+// How long the two timed faces stay up, and how long an idle screen waits before she sleeps.
+constexpr uint32_t kEmoteMs = 3000;
+constexpr uint32_t kSleepingAfterMs = 120000;
 constexpr uint32_t kSensorIntervalMs = 2000;
 constexpr uint32_t kDefaultCardMs = 15000;
 constexpr int kDashboardVersion = 1;    // the dashboard message this firmware draws
@@ -477,6 +483,7 @@ void App::h_welcome(const json::Value& m) {
   phase_since_ = now();
   online_since_ = now();
   attempts_ = 0;
+  connect_misses_ = 0;
   paired_ = m["paired"].as_bool();
   int hb = static_cast<int>(m["heartbeat_s"].as_int(20));
   heartbeat_ms_ = static_cast<uint32_t>(std::max(5, std::min(300, hb))) * 1000u;
@@ -977,13 +984,18 @@ void App::on_button(Button button, bool pressed) {
 }
 
 // The wake engine owns the microphone whenever nothing else does: it must step back for
-// a recording, stay quiet while a turn thinks or answers and while the answer plays back,
-// and be listening again as soon as the device is idle. Deriving that from the state the
-// app already has covers every way back to Idle - a finished turn, a cancel, a timeout, a
-// dropped link - instead of resuming at each call site, which is how a cancelled recording
-// used to leave the engine stopped until the next one.
+// a recording and stay quiet while the speaker plays (it would otherwise hear the answer and
+// wake itself), and be listening again the moment both are free.
+//
+// "Idle" is deliberately NOT part of that test. A turn that has finished playing but has not
+// settled yet - Hermes may still send the rest of the reply - is exactly when the user says the
+// wake word again, and on the moji board it left the engine off for up to 45 s (kRespondingTimeoutMs)
+// after the last sound, or 180 s if the host went quiet mid-turn (kThinkingTimeoutMs). Measured on
+// the board 2026-10-30: playback ended 12:42:35, engine resumed 12:43:06. What a hit does in those
+// states is on_wake_hit's business, not the microphone's: it still refuses to open a turn unless
+// the app is idle.
 void App::update_wake() {
-  const bool wants_mic = mode_ == Mode::Idle && !speaking() && hardware_check_ == HardwareCheck::None;
+  const bool wants_mic = mode_ != Mode::Listening && !speaking() && hardware_check_ == HardwareCheck::None;
   if (wants_mic == wake_running_) return;
   wake_running_ = wants_mic;
   if (wants_mic)
@@ -1009,6 +1021,8 @@ void App::on_wake_hit(int command_id, float score) {
   wake_awaiting_cue_ = true;
   wake_cue_at_ = t;
   wake_display();
+  // "There you are." Listening takes the screen a moment later, so this shows for a blink.
+  set_emote(Emote::Happy, kEmoteMs);
   update_model();  // the screen lights up now, the recording waits for the cue
 }
 
@@ -1075,6 +1089,11 @@ void App::finish_listening() {
   status_ = tr(i18n::Msg::Sending);
 }
 
+void App::set_emote(Emote e, uint32_t ms) {
+  emote_ = e;
+  emote_until_ = now() + ms;
+}
+
 void App::cancel_listening(std::string_view why) {
   if (hal_.mic) hal_.mic->stop();
   json::Value c = proto::message("audio.cancel");
@@ -1120,12 +1139,15 @@ void App::on_mic_samples(const int16_t* samples, size_t count) {
   }
   if (mode_ != Mode::Listening || count == 0) return;
   level_ = level_percent(rms(samples, count));
-  // TEMPORARY (bring-up): a turn opened by the wake word recorded nothing, so count what
-  // arrives and how loud it is. Drop once the hand-over is proven.
-  if (++listen_chunks_ % 50 == 0 && level_ == 0) {
+  ++listen_chunks_;  // finish_listening() reads it to tell "no audio at all" from a silent turn
+#if defined(HG_WAKE_DIAG)
+  // Bring-up only: a turn opened by the wake word once recorded nothing, so say so while it
+  // is still recording. A release build compiles this out.
+  if (listen_chunks_ % 50 == 0 && level_ == 0) {
     log(LogLevel::Warn, "recording: still silent after " + std::to_string(listen_chunks_) +
                             " chunks, the microphone is not delivering");
   }
+#endif
   size_t off = 0;
   while (off < count) {
     size_t n = std::min(kMicChunkSamples, count - off);
@@ -1142,6 +1164,7 @@ void App::on_mic_samples(const int16_t* samples, size_t count) {
       update_model();
     } else if (r == Vad::Result::NoSpeech) {
       cancel_listening("no speech");
+      set_emote(Emote::Sad, kEmoteMs);  // the turn came back empty: one frown, then straight
       set_hint_flash(tr(i18n::Msg::DidntHearAnything));
       update_model();
     }
@@ -1475,6 +1498,8 @@ void App::h_ota_abort(const json::Value&) {
 
 void App::tick() {
   const uint32_t t = now();
+  // The idle clock sleeping reads: kept here so no mode assignment has to remember it.
+  if (mode_ != Mode::Idle) idle_since_ = t;
   power_tick();
   settings_tick();
   phone_tick();
@@ -1493,7 +1518,10 @@ void App::tick() {
 
   if (phase_ == Phase::Connecting && !reconnect_pending_ && t - phase_since_ > kConnectTimeoutMs) {
     hal_.transport->close();
-    drop_session("connect timeout");
+    // A gateway restart (or a slow boot) outlives this window, so the first misses are routine:
+    // the screen keeps saying "connecting" and the backoff retries. Only a run of failures is
+    // worth an error line.
+    drop_session(++connect_misses_ < kConnectMissesBeforeError ? std::string_view() : "connect timeout");
     update_model();
   } else if (phase_ == Phase::Handshake && t - phase_since_ > kHandshakeTimeoutMs) {
     hal_.transport->close();
@@ -1621,6 +1649,7 @@ void App::update_model() {
   m.scroll = scroll_;
   m.level = level_;
   m.speaking = speaking();
+  m.emote = Emote::Auto;
   m.color_test = false;
   m.settings_hold = settings_hold_live();
   m.battery = -1;
@@ -1832,6 +1861,13 @@ void App::update_model() {
       *power_status_->battery_percent <= 10 && power_status_->external_power == false)
     m.detail = tr(Msg::LowBattery);
   if (!hint_flash_.empty()) m.hint = hint_flash_;
+  // A timed face (happy, sad) outranks the screen; otherwise an idle hero falls asleep.
+  const uint32_t t = now();
+  if (emote_until_ != 0 && static_cast<int32_t>(emote_until_ - t) > 0) {
+    m.emote = emote_;
+  } else if (m.screen == Screen::Ready && m.hero && !display_sleeping_ && t - idle_since_ >= kSleepingAfterMs) {
+    m.emote = Emote::Sleeping;
+  }
   if (!display_sleeping_) render(m);
 }
 
