@@ -1850,7 +1850,7 @@ void App::update_model() {
     bool showing_reply = !reply_.empty() && static_cast<int32_t>(reply_until_ - now()) > 0;
     m.hero = !showing_reply;
     if (m.hero) {
-      m.headline = tr(Msg::HiImHermes);
+      m.headline = profile_.greeting.empty() ? tr(Msg::HiImHermes) : profile_.greeting;
       m.detail = tr(reply_.empty() || !profile_.has_scroll_buttons ? Msg::AskMeAnything : Msg::UpShowsLastReply);
       if (dashboard_ready_ && can_open_dashboard() && reply_.empty())
         m.detail = profile_.touch_screen ? std::string(tr(Msg::SwipeDownForSessions)) : tr(Msg::ButtonShowsSessions, {cancel});

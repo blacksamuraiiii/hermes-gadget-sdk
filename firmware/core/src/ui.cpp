@@ -786,6 +786,9 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   const int s = layout_.scale, w = info_.width, lh = Canvas::line_height(s);
   const int cols = layout_.hero_cols;
   if (!m.detail.empty()) g.detail = wrap_text(m.detail, cols);
+  // A board drawing its own face shows one caption line: the state. The detail line
+  // (a status phrase) is what the face itself now says.
+  if (m.robot) g.detail.clear();
   const int buttons_h = m.yes.empty() && m.no.empty() ? 0 : lh + 6 * s;
   auto caption_h = [&](int lines) { return (1 + lines) * lh + s; };
   // Never shrink the mascot below the smallest bitmap: drop caption lines instead.
@@ -800,13 +803,17 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
     last += "..";
   }
   // Reserve one detail line even when there is none, so the mascot keeps its size.
-  const int ch = caption_h(std::max<int>(1, static_cast<int>(g.detail.size())));
+  // A board with its own face takes the line back: nothing to draw, nothing to reserve.
+  const int lines = static_cast<int>(g.detail.size());
+  const int ch = caption_h(m.robot ? std::max(0, lines) : std::max<int>(1, lines));
   // A board with its own face leaves out the bottom bar, so the face and its caption
   // get the whole area; the caption also sits a little further down.
   const int main_h = m.robot ? info_.height - layout_.top_h : layout_.main_h;
   const int gap = m.robot ? 5 * s : 2 * s;
   const int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
-  g.size = mascot::pick(avail, mascot::Frame::Idle)->size;
+  // The mascot only exists at 64/96/144/192; a board's own face scales to anything,
+  // so it takes the room it is given instead of stepping down a size.
+  g.size = m.robot ? std::max(32, avail) : mascot::pick(avail, mascot::Frame::Idle)->size;
   const int block = g.size + gap + ch + buttons_h;
   g.x = (w - g.size) / 2;
   g.y = layout_.main_y + std::max(s, (main_h - block) / 2);

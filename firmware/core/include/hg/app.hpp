@@ -49,6 +49,9 @@ struct DeviceProfile {
   // The screen stands in for the buttons (hold to talk, tap to answer yes,
   // swipe to cancel); on-screen hints are worded for touch.
   bool touch_screen = false;
+  // The Ready screen's headline. Empty takes the translated "Hi, I'm Hermes"; a board
+  // with its own character says who it is instead ("Hi, I'm Moji").
+  std::string greeting;
   // The board has its own face (hg/robot_face.hpp) instead of the mascot bitmaps:
   // the hero box draws that instead. One board's artwork, not a global switch.
   bool robot_face = false;

@@ -7251,4 +7251,11 @@ bool bitmap(uint32_t cp, int* w, int* h, int* row_bytes, const uint8_t** rows) {
   return false;
 }
 
+// The 12 px face is monospaced: one column for ASCII, two for a wide glyph.
+int advance(uint32_t cp) {
+  if (cp != 0 && cp < 0x80) return kMetrics.cell_w;
+  if (wide_bitmap(cp)) return kMetrics.wide_w;
+  return kMetrics.wide ? kMetrics.wide_w : kMetrics.cell_w;
+}
+
 }  // namespace hg::font

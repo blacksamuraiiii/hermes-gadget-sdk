@@ -203,6 +203,9 @@ void draw_mouth(Pen& p, Look look, uint8_t level) {
       p.arc(cx, 148, 13, 4, 200, 340, p.ink());
       break;
     case Look::Thinking:
+    case Look::Sleeping:  // a small round mouth, as the design sheet draws it
+      p.canvas().ring(p.px(cx), p.py(143), p.len(4.5f), p.len(3), p.ink());
+      break;
     case Look::Listening:
       p.canvas().ring(p.px(cx), p.py(143), p.len(5.5f), p.len(3.5f), p.ink());
       break;
@@ -213,9 +216,6 @@ void draw_mouth(Pen& p, Look look, uint8_t level) {
     }
     case Look::Neutral:  // a straight mouth at rest
       p.line(cx - 15, 149, cx + 15, 149, 4, p.ink());
-      break;
-    case Look::Sleeping:  // ...and a shorter one asleep
-      p.line(cx - 11, 147, cx + 11, 147, 4, p.ink());
       break;
   }
 }

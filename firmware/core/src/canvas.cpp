@@ -120,9 +120,10 @@ int Canvas::text(int x, int y, std::string_view s, int scale, uint16_t color) {
     int w = 0, h = 0, row_bytes = 0;
     const uint8_t* rows = nullptr;
     const bool have = cp != 0 && font::bitmap(cp, &w, &h, &row_bytes, &rows);
-    // A wide glyph takes two columns; a code point the font lacks takes a wide cell and
+    // A glyph the face cannot draw takes a cell (two when the face has wide glyphs) and
     // shows '?' instead, so a missing glyph never shifts the rest of the line.
-    const int advance = (have ? w > m.cell_w : m.wide) ? m.wide_w : m.cell_w;
+    int advance = font::advance(cp);
+    if (advance <= 0) advance = m.wide ? m.wide_w : m.cell_w;
     if (!have) {
       if (font::bitmap('?', &w, &h, &row_bytes, &rows)) {
         draw_bitmap(*this, x + (advance - w) * scale / 2, y, scale, color, w, h, row_bytes, rows);
@@ -138,7 +139,15 @@ int Canvas::text(int x, int y, std::string_view s, int scale, uint16_t color) {
 
 int Canvas::text_width(std::string_view s, int scale) {
   if (s.empty()) return 0;
-  return font::columns(s) * font::kCellWidth * scale - scale;
+  int width = 0;
+  for (size_t i = 0; i < s.size();) {
+    const uint32_t cp = font::decode(s, i);
+    int advance = font::advance(cp);
+    if (advance <= 0) advance = font::kMetrics.wide ? font::kMetrics.wide_w : font::kMetrics.cell_w;
+    width += advance * scale;
+  }
+  // The pen ends one step past the last glyph's ink; centring uses the ink, not the pen.
+  return width - scale;
 }
 
 int Canvas::line_height(int scale) { return font::kCellHeight * scale; }

@@ -28,6 +28,7 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-moji.csv"
 # CJK table (6x12 ASCII + 12x12 CJK) and reports charset=utf-8. Other boards keep
 # the upstream 5x7 Latin-1 font: 26x5 cells here against 10 rows of 5x7 there.
 CONFIG_HG_FONT_CJK=y
+CONFIG_HG_FONT_CELL=16
 
 # The link is the USB cable, not Wi-Fi: messages become SLIP frames on the
 # console port and tools/usb_relay.py bridges them to the plugin. Comment this

@@ -21,8 +21,17 @@ struct Metrics {
 };
 
 #if HG_FONT_CJK
-// 6x12 ASCII plus 12x12 CJK: 26 columns by 5 rows on a 240-px round panel.
+// The CJK build is a 16 px face: 8-column ASCII from Montserrat and 16x16 CJK from
+// Noto Sans SC, 18 px row pitch (src/font_ascii.cpp, src/font_cjk.cpp). HG_FONT_PX=12
+// keeps the interface for a 12 px face, which no table in the tree ships any more.
+#ifndef HG_FONT_PX
+#define HG_FONT_PX 12
+#endif
+#if HG_FONT_PX == 16
+constexpr Metrics kMetrics{8, 16, 8, 18, 16, true};
+#else
 constexpr Metrics kMetrics{6, 12, 6, 14, 12, true};
+#endif
 #else
 // The upstream 5x7 font: printable ASCII and Latin-1, one column per code point.
 constexpr Metrics kMetrics{5, 7, 6, 9, 6, false};
@@ -38,6 +47,11 @@ inline constexpr int kCellHeight = kMetrics.cell_h;
 // One glyph as 1-bit rows, most significant bit leftmost, `row_bytes` per row.
 // False means the font has no glyph for `cp`, and the caller draws '?' instead.
 bool bitmap(uint32_t cp, int* w, int* h, int* row_bytes, const uint8_t** rows);
+
+// How far the pen moves after drawing `cp`, in pixels at scale 1. A proportional
+// Latin face carries its own advance per glyph; CJK takes a whole cell; anything the
+// font cannot draw takes the cell width (or two when the face has wide glyphs).
+int advance(uint32_t cp);
 
 // Decode one UTF-8 sequence at s[i] and advance i past it. A malformed byte
 // yields 0 and advances one byte, so callers can draw '?' and carry on.

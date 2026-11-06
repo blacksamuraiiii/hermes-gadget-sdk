@@ -1,20 +1,22 @@
-"""Turn a BDF bitmap font into the firmware's font tables.
+"""Turn font files into the firmware's 1-bit font tables.
 
-The firmware draws a 12-pixel-high cell: ASCII advances 6 pixels (one column),
-a CJK glyph advances 12 (two columns). This script reads a BDF, emits
+The CJK build draws one cell height (16 px here). A CJK glyph takes a whole cell
+(16 px, two columns); an ASCII glyph takes its own advance, which the table carries
+per glyph, so a proportional Latin face (Montserrat, as muse-gadget-sdk uses) keeps
+its 'M' and 'W' instead of being cut down to a fixed 8 px column. This script emits
 
-  firmware/core/src/font_ascii.cpp   0x20..0x7E as ASCII art (reviewable in a diff)
-  firmware/core/src/font_cjk.cpp     sorted codepoints + packed 12x12 bitmaps
+  firmware/core/src/font_ascii.cpp   0x20..0x7E, one byte per row, per-glyph advance
+  firmware/core/src/font_cjk.cpp     sorted codepoints + packed 16x16 bitmaps
 
-and nothing else. Font: Fusion Pixel Font 12px monospaced zh_Hans
-(https://github.com/TakWolf/fusion-pixel-font, OFL 1.1) - the release zip is
-downloaded by hand; pass its .bdf path with --bdf.
+Fonts (both SIL OFL 1.1, both what muse-gadget-sdk pairs at 16 px):
 
-    python tools/make_cjk_font.py --bdf /path/fusion-pixel-12px-monospaced-zh_hans.bdf
-    python tools/make_cjk_font.py --bdf ... --charset gb2312-l1    # smaller table
+  Latin: Montserrat Regular   https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf
+  CJK:   Noto Sans SC Medium  https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Medium.otf
 
-The generated files say what they were built from, so a later rebuild can be
-traced without this script's defaults.
+    python tools/make_cjk_font.py --latin Montserrat.ttf --cjk NotoSansSC-Medium.otf
+
+GB2312 carries no Hangul, so the table stays Chinese-only; the generated files say
+what they were built from, so a rebuild stays traceable.
 """
 
 from __future__ import annotations
@@ -23,70 +25,19 @@ import argparse
 import pathlib
 import sys
 
+from PIL import Image, ImageDraw, ImageFont
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORE_SRC = ROOT / "firmware" / "core" / "src"
 
-# Level 1 (3755 hanzi, 0xB0A1..0xD7F9) keeps the table small; the full GB2312 set
-# (6763 hanzi + symbols) is about 60% bigger.
+# `gb2312` is the 6763 hanzi of the standard; `gb2312-l1` is its 3755 level-1 hanzi,
+# about 40% smaller.
 CHARSETS = {
     "gb2312": (0xB0A1, 0xF7FE),
     "gb2312-l1": (0xB0A1, 0xD7F9),
 }
-
-
-def parse_bdf(path: pathlib.Path):
-    """Yield (codepoint, width, height, xoff, yoff, rows[list[list[bool]]])."""
-    glyphs = {}
-    bbox = None
-    cur = None
-    in_bitmap = False
-    for raw in path.read_text(encoding="latin-1").splitlines():
-        line = raw.strip()
-        if line.startswith("FONTBOUNDINGBOX"):
-            _, w, h, x, y = line.split()
-            bbox = (int(w), int(h), int(x), int(y))
-        elif line.startswith("STARTCHAR"):
-            cur = {"encoding": None, "dwidth": 0, "bbx": None, "rows": []}
-        elif line.startswith("ENCODING") and cur is not None:
-            cur["encoding"] = int(line.split()[1])
-        elif line.startswith("DWIDTH") and cur is not None:
-            cur["dwidth"] = int(line.split()[1])
-        elif line.startswith("BBX") and cur is not None:
-            _, w, h, x, y = line.split()
-            cur["bbx"] = (int(w), int(h), int(x), int(y))
-        elif line == "BITMAP":
-            in_bitmap = True
-        elif line == "ENDCHAR":
-            in_bitmap = False
-            if cur and cur["encoding"] is not None and cur["encoding"] >= 0:
-                glyphs[cur["encoding"]] = cur
-            cur = None
-        elif in_bitmap and cur is not None and line:
-            width = cur["bbx"][0]
-            value = int(line, 16)
-            bits = [(value >> (len(line) * 4 - 1 - i)) & 1 for i in range(width)]
-            cur["rows"].append(bits)
-    if bbox is None:
-        raise SystemExit("no FONTBOUNDINGBOX in the BDF")
-    return glyphs, bbox
-
-
-def rasterise(glyph, bbox, cell_w):
-    """Return `cell_h` rows of `cell_w` booleans, glyph placed on the baseline."""
-    cell_w_total, cell_h, cell_x, cell_y = bbox
-    w, h, xoff, yoff = glyph["bbx"]
-    baseline = cell_h + cell_y
-    top = baseline - (yoff + h)
-    grid = [[False] * cell_w for _ in range(cell_h)]
-    for r, bits in enumerate(glyph["rows"]):
-        y = top + r
-        if not 0 <= y < cell_h:
-            continue
-        for c, on in enumerate(bits):
-            x = xoff + c
-            if on and 0 <= x < cell_w:
-                grid[y][x] = True
-    return grid
+PUNCTUATION = "，。！？：；、（）《》“”‘’…—·"
+THRESHOLD = 110
 
 
 def gb2312_codepoints(lo: int, hi: int) -> set[int]:
@@ -97,35 +48,67 @@ def gb2312_codepoints(lo: int, hi: int) -> set[int]:
             if not lo <= value <= hi:
                 continue
             try:
-                ch = bytes((lead, trail)).decode("gb2312")
+                points.add(ord(bytes((lead, trail)).decode("gb2312")))
             except UnicodeDecodeError:
                 continue
-            points.add(ord(ch))
     return points
 
 
-def emit_ascii(glyphs, bbox, font_name: str) -> str:
+def render(font, ch: str, cell: int) -> list[list[bool]]:
+    """One glyph in a `cell` square, 1-bit."""
+    img = Image.new("L", (cell, cell), 0)
+    ImageDraw.Draw(img).text((0, 0), ch, font=font, fill=255, anchor="la")
+    px = img.load()
+    return [[px[x, y] > THRESHOLD for x in range(cell)] for y in range(cell)]
+
+
+def emit_ascii(font, cell: int, source: str) -> str:
+    glyphs = []
+    for cp in range(0x20, 0x7F):
+        advance = max(1, round(font.getlength(chr(cp))))
+        grid = [row[:advance] for row in render(font, chr(cp), cell)]
+        row_bytes = (advance + 7) // 8
+        data = []
+        for row in grid:
+            value = 0
+            for on in row:
+                value = (value << 1) | (1 if on else 0)
+            value <<= row_bytes * 8 - advance  # MSB left-aligned
+            data.extend(f"0x{(value >> (8 * (row_bytes - 1 - i))) & 0xFF:02x}" for i in range(row_bytes))
+        glyphs.append((cp, advance, row_bytes, data))
+
+    widest = max(row_bytes for _, _, row_bytes, _ in glyphs)
     out = [
-        "// 6x12 ASCII glyphs, generated by tools/make_cjk_font.py - do not edit.",
-        "// 1-bit rows, MSB left-aligned in each byte (6 bits of 8 used); see hg/font.hpp.",
-        f"// Source: {font_name} (OFL 1.1), https://github.com/TakWolf/fusion-pixel-font",
+        f"// {cell} px ASCII glyphs, generated by tools/make_cjk_font.py - do not edit.",
+        "// 1-bit rows, MSB left-aligned, each glyph as wide as its own advance; see hg/font.hpp.",
+        f"// Source: {source}.",
         '#include "hg/font.hpp"',
         "",
         "namespace hg::font {",
         "namespace {",
         "",
-        "constexpr uint8_t kAsciiNarrow[95][12] = {",
+        f"constexpr uint8_t kAsciiAdvance[95] = {{",
     ]
-    for cp in range(0x20, 0x7F):
-        glyph = glyphs.get(cp)
-        grid = rasterise(glyph, bbox, 6) if glyph else [[False] * 6 for _ in range(12)]
-        row_bytes = []
-        for row in grid:
-            value = 0
-            for on in row:
-                value = (value << 1) | (1 if on else 0)
-            row_bytes.append(f"0x{value << 2:02x}")  # MSB left-aligned, 6 bits of 8
-        out.append(f"    {{{', '.join(row_bytes)}}},  // 0x{cp:02X}")
+    line = []
+    for _, advance, _, _ in glyphs:
+        line.append(str(advance))
+        if len(line) == 16:
+            out.append("    " + ", ".join(line) + ",")
+            line = []
+    if line:
+        out.append("    " + ", ".join(line) + ",")
+    out += [
+        "};",
+        "",
+        f"// {widest} bytes per row is the widest ASCII glyph in this face.",
+        f"constexpr uint8_t kAsciiBits[95][{cell * widest}] = {{",
+    ]
+    for cp, advance, row_bytes, data in glyphs:
+        rows = [", ".join(data[i * row_bytes:(i + 1) * row_bytes]) for i in range(cell)]
+        # Pad unused row bytes with zeros so every row has the same width.
+        pad = ", ".join(["0x00"] * (widest - row_bytes))
+        rows = [", ".join(filter(None, [r, pad])) for r in rows]
+        out.append(f"    {{{', '.join(rows)}}},  // 0x{cp:02X} advance {advance}")
     out += [
         "};",
         "",
@@ -133,8 +116,15 @@ def emit_ascii(glyphs, bbox, font_name: str) -> str:
         "",
         "const uint8_t* ascii_rows(uint32_t cp) {",
         "  if (cp < 0x20 || cp > 0x7E) return nullptr;",
-        "  return kAsciiNarrow[cp - 0x20];",
+        "  return kAsciiBits[cp - 0x20];",
         "}",
+        "",
+        "int ascii_advance(uint32_t cp) {",
+        "  if (cp < 0x20 || cp > 0x7E) return 0;",
+        "  return kAsciiAdvance[cp - 0x20];",
+        "}",
+        "",
+        f"int ascii_row_bytes() {{ return {widest}; }}",
         "",
         "}  // namespace hg::font",
         "",
@@ -142,14 +132,9 @@ def emit_ascii(glyphs, bbox, font_name: str) -> str:
     return "\n".join(out)
 
 
-def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
-    kept = []
-    for cp in sorted(points):
-        glyph = glyphs.get(cp)
-        if not glyph:
-            continue
-        kept.append((cp, rasterise(glyph, bbox, 12)))
-    codes = ", ".join(str(cp) for cp, _ in kept)
+def emit_cjk(font, points: set[int], cell: int, source: str) -> str:
+    kept = [(cp, render(font, chr(cp), cell)) for cp in sorted(points)]
+    blob_bytes = cell * 2
     blobs = []
     for _, grid in kept:
         data = []
@@ -157,22 +142,20 @@ def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
             value = 0
             for on in row:
                 value = (value << 1) | (1 if on else 0)
-            value <<= 4  # MSB left-aligned: byte0 bit 7 is the leftmost pixel (hg/font.hpp)
             data.append(f"0x{value >> 8:02x}, 0x{value & 0xFF:02x}")
         blobs.append(", ".join(data))
     out = [
-        "// 12x12 CJK glyphs, generated by tools/make_cjk_font.py - do not edit.",
-        "// 1-bit rows, MSB left-aligned in each 16-bit row (12 bits of 16 used).",
-        f"// Source: {font_name} (OFL 1.1), https://github.com/TakWolf/fusion-pixel-font",
-        f"// {len(kept)} of the {len(points)} GB2312 codepoints, sorted by codepoint, {len(kept) * 24} bytes of bitmap.",
-        f"// The other {len(points) - len(kept)} have no glyph in the source font and still draw as '?'.",
+        f"// {cell}x{cell} CJK glyphs, generated by tools/make_cjk_font.py - do not edit.",
+        "// 1-bit rows, two bytes per row, MSB left-aligned; see hg/font.hpp.",
+        f"// Source: {source}.",
+        f"// {len(kept)} codepoints, sorted, {len(kept) * blob_bytes} bytes of bitmap.",
         '#include "hg/font.hpp"',
         "",
         "namespace hg::font {",
         "namespace {",
         "",
-        "constexpr int kCjkCount = " + str(len(kept)) + ";",
-        "constexpr int kCjkBytes = 24;  // 12 rows of two bytes",
+        f"constexpr int kCjkCount = {len(kept)};",
+        f"constexpr int kCjkBytes = {blob_bytes};  // {cell} rows of two bytes",
         "",
         "const uint32_t kCodes[kCjkCount] = {",
     ]
@@ -202,14 +185,16 @@ def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
         "  return nullptr;",
         "}",
         "",
-        "// The narrow ASCII table lives in font_ascii.cpp; this file adds the wide one.",
+        "// The ASCII table lives in font_ascii.cpp; this file adds the wide one.",
         "const uint8_t* ascii_rows(uint32_t cp);",
+        "int ascii_advance(uint32_t cp);",
+        "int ascii_row_bytes();",
         "",
         "bool bitmap(uint32_t cp, int* w, int* h, int* row_bytes, const uint8_t** rows) {",
         "  if (const uint8_t* narrow = ascii_rows(cp)) {",
-        "    *w = kMetrics.glyph_w;",
+        "    *w = ascii_advance(cp);",
         "    *h = kMetrics.glyph_h;",
-        "    *row_bytes = 1;",
+        "    *row_bytes = ascii_row_bytes();",
         "    *rows = narrow;",
         "    return true;",
         "  }",
@@ -223,6 +208,13 @@ def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
         "  return false;",
         "}",
         "",
+        "int advance(uint32_t cp) {",
+        "  const int narrow = ascii_advance(cp);",
+        "  if (narrow > 0) return narrow;",
+        "  if (wide_bitmap(cp)) return kMetrics.wide_w;",
+        "  return kMetrics.wide ? kMetrics.wide_w : kMetrics.cell_w;",
+        "}",
+        "",
         "}  // namespace hg::font",
         "",
     ]
@@ -231,32 +223,34 @@ def emit_cjk(glyphs, bbox, points, font_name: str) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("--bdf", required=True, help="path to the 12px BDF file")
-    parser.add_argument("--charset", default="gb2312", choices=sorted(CHARSETS),
-                        help="which CJK range to embed (default: gb2312)")
-    parser.add_argument("--out-dir", default=str(CORE_SRC), help="where to write the .cpp files")
+    parser.add_argument("--latin", required=True, help="ASCII face, e.g. Montserrat Regular")
+    parser.add_argument("--cjk", required=True, help="CJK face, e.g. Noto Sans SC Medium")
+    parser.add_argument("--px", type=int, default=16, help="cell height in pixels (default 16)")
+    parser.add_argument("--charset", default="gb2312", choices=sorted(CHARSETS))
+    parser.add_argument("--out-dir", default=str(CORE_SRC))
     args = parser.parse_args(argv)
 
-    bdf = pathlib.Path(args.bdf)
-    glyphs, bbox = parse_bdf(bdf)
-    if bbox[:2] != (12, 12):
-        print(f"expected a 12x12 font, got {bbox[0]}x{bbox[1]}", file=sys.stderr)
-        return 2
+    cell = args.px
+    latin_path, cjk_path = pathlib.Path(args.latin), pathlib.Path(args.cjk)
+    latin = ImageFont.truetype(str(latin_path), cell)
+    cjk = ImageFont.truetype(str(cjk_path), cell)
 
     lo, hi = CHARSETS[args.charset]
-    points = gb2312_codepoints(lo, hi)
-    font_name = bdf.stem
+    points = gb2312_codepoints(lo, hi) | {ord(c) for c in PUNCTUATION}
 
-    out_dir = pathlib.Path(args.out_dir)
-    ascii_text = emit_ascii(glyphs, bbox, font_name)
-    cjk_text = emit_cjk(glyphs, bbox, points, font_name)
-    (out_dir / "font_ascii.cpp").write_text(ascii_text, encoding="utf-8")
-    (out_dir / "font_cjk.cpp").write_text(cjk_text, encoding="utf-8")
-    print(f"font_ascii.cpp: {len(ascii_text) / 1024:.1f} KiB of source")
-    print(f"font_cjk.cpp:   {len(cjk_text) / 1024:.1f} KiB of source "
-          f"({len(points)} codepoints requested)")
+    out = pathlib.Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    ascii_text = emit_ascii(latin, cell, latin_path.name)
+    cjk_text = emit_cjk(cjk, points, cell, cjk_path.name)
+    # A size other than the tree's 12 px baseline goes into its own pair, so one
+    # build can carry a bigger face without changing what the other boards ship.
+    suffix = "" if cell == 12 else f"_{cell}"
+    (out / f"font_ascii{suffix}.cpp").write_text(ascii_text, encoding="utf-8", newline="\n")
+    (out / f"font_cjk{suffix}.cpp").write_text(cjk_text, encoding="utf-8", newline="\n")
+    print(f"font_ascii{suffix}.cpp: {len(ascii_text) / 1024:.1f} KiB ({latin_path.name})")
+    print(f"font_cjk{suffix}.cpp:   {len(cjk_text) / 1024:.1f} KiB ({len(points)} codepoints, {cjk_path.name})")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

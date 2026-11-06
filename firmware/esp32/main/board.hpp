@@ -279,6 +279,8 @@ struct BoardConfig {
   int status_led = -1;
   // Draw this board's own robot face instead of the mascot bitmaps (hg/robot_face.hpp).
   bool robot_face = false;
+  // The idle screen's greeting; nullptr keeps the translated default.
+  const char* greeting = nullptr;
   const char* talk_label = "TALK";
   const char* cancel_label = "CANCEL";
 };
