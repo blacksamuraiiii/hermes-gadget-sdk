@@ -37,6 +37,9 @@ class SimHal final : public hg::Display,
     info_.swap_bytes = false;
     info_.has_backlight = cfg.has_backlight != 0;
     info_.round = cfg.round != 0;
+    if (cfg.round_area_permille > 0) info_.round_area_permille = static_cast<uint16_t>(cfg.round_area_permille);
+    info_.no_bottom_bar = cfg.no_bottom_bar != 0;
+    info_.body_rows_cap = static_cast<uint8_t>(cfg.body_rows_cap);
   }
 
   // Display
@@ -226,6 +229,8 @@ hgsim* hgsim_create(const hgsim_config* cfg, const hgsim_host* host) {
   profile.has_scroll_buttons = cfg->has_scroll_buttons != 0;
   profile.talk_label = cfg->talk_label ? cfg->talk_label : "SPACE";
   profile.cancel_label = cfg->cancel_label ? cfg->cancel_label : "ESC";
+  profile.robot_face = cfg->robot_face != 0;
+  if (cfg->greeting) profile.greeting = cfg->greeting;
   if (cfg->touch) {
     profile.touch_screen = true;
     if (!cfg->cancel_label) profile.cancel_label = "Swipe down";

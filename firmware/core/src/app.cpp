@@ -1733,7 +1733,8 @@ void App::update_model() {
   if (phase_ == Phase::Boot) {
     m.screen = Screen::Boot;
     m.hero = true;
-    m.headline = "Hermes";
+    // A board with its own character names itself; everyone else says Hermes.
+    m.headline = profile_.robot_face && !profile_.greeting.empty() ? profile_.greeting : "Hermes";
     m.detail = tr(Msg::StartingFirmware, {profile_.firmware});
     m.hint = device_id_;
   } else if (ota_ == Ota::Receiving || ota_ == Ota::Restarting) {
@@ -1771,7 +1772,11 @@ void App::update_model() {
     m.screen = Screen::Connecting;
     m.hero = true;
     m.caption_lines = kCaptionLines;
-    m.headline = tr(phase_ == Phase::Handshake ? Msg::Authenticating : Msg::ConnectingToHermes);
+    // "Connecting to Hermes" is a mouthful on a 1.28" round panel; a board with its
+    // own face just says Connecting (or Authenticating).
+    m.headline = profile_.robot_face
+                    ? (phase_ == Phase::Handshake ? "Authenticating" : "Connecting")
+                    : tr(phase_ == Phase::Handshake ? Msg::Authenticating : Msg::ConnectingToHermes);
     m.detail = server_url_;
     if (!last_close_.empty() && attempts_ > 1) m.detail += "\n" + tr(Msg::ConnectError, {last_close_});
     if (reconnect_pending_) {
@@ -1847,7 +1852,8 @@ void App::update_model() {
     m.hint = tr(Msg::ButtonToStop, {cancel});
   } else if (mode_ == Mode::Responding) {
     m.screen = Screen::Responding;
-    m.headline = m.speaking ? tr(Msg::Speaking) : "Hermes";
+    m.headline = m.speaking ? tr(Msg::Speaking)
+                            : (profile_.robot_face && !profile_.greeting.empty() ? profile_.greeting : "Hermes");
     m.detail = status_;
     m.body = reply_;
     m.hint = profile_.touch_screen ? std::string(tr(Msg::HoldToReply)) : tr(Msg::ButtonToReply, {talk});

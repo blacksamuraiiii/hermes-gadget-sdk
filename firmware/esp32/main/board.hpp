@@ -98,6 +98,9 @@ struct LcdConfig {
   uint8_t font_scale = 1;  // UI text scale multiplier, clamped so the scale stays 1..4 (hg::DisplayInfo)
   // Most body lines a text screen may use (hg::DisplayInfo::body_rows_cap); 0 = no cap.
   uint8_t body_rows_cap = 0;
+  uint16_t round_area_permille = 707;  // UI square on a round panel, of the short side
+  bool no_bottom_bar = false;  // the board has no button hints to show
+  bool calibration = false;  // panel/area rulers on screen (bring-up only)
 };
 
 struct I2sMicConfig {

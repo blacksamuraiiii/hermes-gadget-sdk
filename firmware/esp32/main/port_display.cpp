@@ -276,6 +276,9 @@ hg::DisplayInfo SpiDisplay::info() const {
   di.has_backlight = cfg_.backlight >= 0 || static_cast<bool>(board_backlight);
   di.round = cfg_.round;
   di.body_rows_cap = cfg_.body_rows_cap;
+  di.calibration = cfg_.calibration;
+  di.round_area_permille = cfg_.round_area_permille;
+  di.no_bottom_bar = cfg_.no_bottom_bar;
   di.font_scale = cfg_.font_scale;
   return di;
 }

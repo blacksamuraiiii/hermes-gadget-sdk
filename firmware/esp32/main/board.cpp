@@ -770,7 +770,11 @@ BoardConfig make() {
   // Two body lines are all a 1.28" round panel shows without the bezel eating the
   // last one; the app pages longer text.
   b.lcd.body_rows_cap = 2;
-  b.greeting = "Hi, I'm Moji";  // the idle screen says whose face this is
+  // The 1.28" glass runs to the bezel: an inscribed square (70%) threw away a ring of
+  // usable pixels, so the face sat small in the middle and the text bands were short.
+  b.lcd.round_area_permille = 860;
+  b.lcd.no_bottom_bar = true;  // one BOOT key: no hint row, the text gets the rows
+  b.greeting = "Moji";  // the idle screen names the face under it
   b.talk_label = "BOOT";
   return b;
 }

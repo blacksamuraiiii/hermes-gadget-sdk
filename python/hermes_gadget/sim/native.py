@@ -99,6 +99,11 @@ class _Config(Structure):
         ("update_capacity", c_size_t),
         ("update_pending", c_int),
         ("has_power", c_int),
+        ("round_area_permille", c_int),
+        ("no_bottom_bar", c_int),
+        ("body_rows_cap", c_int),
+        ("robot_face", c_int),
+        ("greeting", c_char_p),
     ]
 
 
@@ -209,15 +214,20 @@ class NativeDevice:
                  speaker_rate: int = 16000, library: Path | None = None,
                  button_labels: tuple[str, str] | None = None, round_panel: bool = False,
                  touch_screen: bool = False, update_capacity: int = 0, update_pending: bool = False,
-                 audio_host: AudioHost | None = None, power: bool = False):
+                 audio_host: AudioHost | None = None, power: bool = False,
+                 round_area_permille: int = 0, no_bottom_bar: bool = False, body_rows_cap: int = 0,
+                 robot_face: bool = False, greeting: str | None = None):
         self._lib = load_library(library)
         self._host_obj = host
         self.width, self.height = width, height
         self._strings = [s.encode() for s in (board, firmware, name, server_url, access_token)]
         self._strings += [s.encode() for s in button_labels] if button_labels else [None, None]
+        greeting_raw = greeting.encode() if greeting else None
         self._config = _Config(width, height, int(mic), int(speaker), int(backlight), int(scroll_buttons),
                                mic_rate, speaker_rate, *self._strings, int(round_panel), int(touch_screen),
-                               update_capacity, int(update_pending), int(power))
+                               update_capacity, int(update_pending), int(power),
+                               int(round_area_permille), int(no_bottom_bar), int(body_rows_cap),
+                               int(robot_face), greeting_raw)
         self._callbacks = self._make_callbacks(host, audio_host or host)
         self._handle = self._lib.hgsim_create(ctypes.byref(self._config), ctypes.byref(self._callbacks))
         if not self._handle:

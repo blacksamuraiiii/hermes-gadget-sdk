@@ -213,8 +213,9 @@ const char* screen_name(Screen s) {
 Ui::Ui(Display& display)
     : display_(display), panel_(display.info()), info_(panel_), bg_(panel_.emissive ? 0 : kBg) {
   if (panel_.round) {
-    // The largest square inside the circle; the corners of the panel do not exist.
-    const int side = std::min(panel_.width, panel_.height) * 707 / 1000;
+    // The square the UI uses on a round panel: the inscribed one by default, more
+    // when the board says its bezel is thin (hg::DisplayInfo::round_area_pct).
+    const int side = std::min(panel_.width, panel_.height) * panel_.round_area_permille / 1000;
     ox_ = (panel_.width - side) / 2;
     oy_ = (panel_.height - side) / 2;
     info_.width = info_.height = static_cast<uint16_t>(side);
@@ -230,7 +231,7 @@ Ui::Ui(Display& display)
   // label: 2r + 14s, and never under 36 px so the hold target stays finger-sized.
   const int dot_r = std::max(2, 3 * s / 2 + 1);
   layout_.top_h = panel_.round ? std::max(36, 2 * dot_r + 14 * s) : bar_h;
-  layout_.bottom_h = bar_h;
+  layout_.bottom_h = panel_.no_bottom_bar ? 0 : bar_h;
   layout_.title_w = panel_.round ? std::min(w, 120 * s) : w;
   layout_.header_h = Canvas::line_height(s + 1) + 4 * s;
   layout_.main_y = layout_.top_h;
@@ -306,10 +307,21 @@ void Ui::draw_frame(const UiModel& m) {
     push(0, panel_.height);
   }
   if (panel_.round) draw_round_battery(m);
+  if (panel_.calibration && !valid_) {
+    // Bring-up rulers: the panel edge, the area we lay out in, and its centre.
+    Canvas panel(display_.framebuffer(), panel_.width, panel_.height, panel_.swap_bytes);
+    const uint16_t mark = kGreen;
+    panel.rect(0, 0, panel_.width, panel_.height, mark);
+    panel.rect(ox_, oy_, info_.width, info_.height, mark);
+    panel.fill_rect(panel_.width / 2 - 2, panel_.height / 2, 4, 1, kRed);
+    panel.fill_rect(panel_.width / 2, panel_.height / 2 - 2, 1, 4, kRed);
+  }
   Canvas c = canvas();
   const int y_header = layout_.top_h;
   const int y_content = y_header + layout_.header_h;
   // A board with its own face has no bottom bar: her caption sits under the face.
+  // A board with its own face has no bottom bar anywhere, so the content band gets
+  // those rows instead of losing its last text line to them.
   const int y_bottom = m.robot ? h : h - layout_.bottom_h;
 
   uint32_t hashes[4];
@@ -661,20 +673,27 @@ void Ui::draw_content(Canvas& c, const UiModel& m) {
     return;
   }
 
-  int rows = body_rows(m);
-  if (!m.detail.empty()) {
+  const int rows = body_rows(m);
+  auto lines = m.body.empty() ? std::vector<std::string>{} : wrap_text(m.body, layout_.body_cols);
+  auto detail_lines = m.detail.empty() ? std::vector<std::string>{} : wrap_text(m.detail, layout_.body_cols);
+  const int shown_detail = std::min<int>(detail_lines.size(), std::max(0, layout_.body_rows - rows));
+  // A board with no bottom bar has a tall band; centre a short block in it instead of
+  // leaving all the slack under the last line, which reads as text stuck to the top.
+  if (panel_.no_bottom_bar) {
+    const int used = (shown_detail + std::min<int>(rows, static_cast<int>(lines.size()))) * lh;
+    const int slack = (y1 - margin) - (y0 + margin) - used;
+    if (slack > lh) y += slack / 2;
+  }
+  if (shown_detail > 0) {
     uint16_t dcol = m.screen == Screen::Error || m.screen == Screen::Offline ? kRed : kDim;
     if (m.screen == Screen::Thinking) dcol = kBlue;
-    auto detail_lines = wrap_text(m.detail, layout_.body_cols);
-    int shown = layout_.body_rows - rows;
-    for (int i = 0; i < shown; ++i) {
+    for (int i = 0; i < shown_detail; ++i) {
       c.text(margin, y, detail_lines[static_cast<size_t>(i)], s, dcol);
       y += lh;
     }
   }
   if (m.body.empty() || rows <= 0) return;
 
-  auto lines = wrap_text(m.body, layout_.body_cols);
   int total = static_cast<int>(lines.size());
   int max_first = std::max(0, total - rows);
   int first = m.scroll < 0 ? max_first : std::min(m.scroll, max_first);

@@ -87,6 +87,12 @@ typedef struct hgsim_config {
   size_t update_capacity; /* bytes the update slot holds; 0 = no over-the-air updates */
   int update_pending;     /* this boot runs an installed update that isn't confirmed yet */
   int has_power;         /* explicitly supplied simulated power readings */
+  /* Layout knobs the real boards set (see hg::DisplayInfo and hg::DeviceProfile). */
+  int round_area_permille; /* 0 keeps the inscribed square (707) */
+  int no_bottom_bar;       /* the board has no button hints to show */
+  int body_rows_cap;       /* most body lines a text screen may use; 0 = no cap */
+  int robot_face;          /* draw the board's own robot face instead of the mascot */
+  const char* greeting;    /* idle headline; NULL keeps the translated default */
 } hgsim_config;
 
 /* Action handler: fill `result_json` (a JSON object) and return 1, or write an

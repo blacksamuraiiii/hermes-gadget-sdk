@@ -1,0 +1,9 @@
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/CMakeFiles/hgsim.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/CMakeFiles/hg_core_tests.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/CMakeFiles/test.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/CMakeFiles/edit_cache.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/CMakeFiles/rebuild_cache.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/core/CMakeFiles/hg_core.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/core/CMakeFiles/test.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/core/CMakeFiles/edit_cache.dir
+/mnt/c/Users/black_samurai/Documents/code/Project/202610hermesGadget/build-sim-moji/core/CMakeFiles/rebuild_cache.dir

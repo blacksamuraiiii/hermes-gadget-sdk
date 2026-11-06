@@ -39,6 +39,12 @@ class Board:
     scroll_buttons: bool = True
     round: bool = False  # circular panel: pixels outside the circle are not shown
     touch: bool = False  # touchscreen: hold to talk, tap to answer yes, swipe down to cancel
+    # Board-specific layout knobs the firmware reads from its display profile.
+    round_area_permille: int = 0  # 0 keeps the inscribed square (707)
+    no_bottom_bar: bool = False
+    body_rows_cap: int = 0
+    robot_face: bool = False
+    greeting: str | None = None
 
 
 BOARDS = {
@@ -58,6 +64,12 @@ BOARDS = {
                               round=True, touch=True),
     # A 1.75" round 466x466 AMOLED touch board (e.g. ESP32-S3-Touch-AMOLED-1.75): no scroll buttons.
     "sim-466x466-round": Board("sim-466x466-round", 466, 466, scroll_buttons=False, round=True, touch=True),
+    # The moji board: 1.28" round GC9A01, one BOOT key, its own robot face, a 16 px
+    # Noto/Montserrat font and a thin bezel (86% of the panel). Screenshots from this
+    # board match the glass, so layout questions are answered here, not on the desk.
+    "sim-moji": Board("sim-moji", 240, 240, scroll_buttons=False, round=True, touch=False,
+                       round_area_permille=860, no_bottom_bar=True, body_rows_cap=2,
+                       robot_face=True, greeting="Hi, I'm Moji"),
     # A 1.8" rectangular 368x448 AMOLED touch board (e.g. ESP32-S3-Touch-AMOLED-1.8): no scroll buttons.
     "sim-368x448": Board("sim-368x448", 368, 448, scroll_buttons=False, touch=True),
     # The 2.06" 410x502 AMOLED watch (ESP32-S3-Touch-AMOLED-2.06), as the firmware draws it:
@@ -181,7 +193,9 @@ class Simulator:
             server_url=url, access_token=token, mic=b.mic, speaker=b.speaker, backlight=b.backlight,
             scroll_buttons=b.scroll_buttons, library=library, button_labels=button_labels,
             round_panel=b.round, touch_screen=b.touch, update_capacity=UPDATE_SLOT_BYTES,
-            update_pending=update_pending, power=True)
+            update_pending=update_pending, power=True,
+            round_area_permille=b.round_area_permille, no_bottom_bar=b.no_bottom_bar,
+            body_rows_cap=b.body_rows_cap, robot_face=b.robot_face, greeting=b.greeting)
         self._round_spans = _circle_spans(b.width, b.height) if b.round else None
         self._register_actions()
 

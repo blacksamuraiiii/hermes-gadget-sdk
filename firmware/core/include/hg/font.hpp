@@ -22,13 +22,13 @@ struct Metrics {
 
 #if HG_FONT_CJK
 // The CJK build is a 16 px face: 8-column ASCII from Montserrat and 16x16 CJK from
-// Noto Sans SC, 18 px row pitch (src/font_ascii.cpp, src/font_cjk.cpp). HG_FONT_PX=12
+// Noto Sans SC, 20 px row pitch (src/font_ascii.cpp, src/font_cjk.cpp). HG_FONT_PX=12
 // keeps the interface for a 12 px face, which no table in the tree ships any more.
 #ifndef HG_FONT_PX
 #define HG_FONT_PX 12
 #endif
 #if HG_FONT_PX == 16
-constexpr Metrics kMetrics{8, 16, 8, 18, 16, true};
+constexpr Metrics kMetrics{8, 16, 8, 20, 16, true};
 #else
 constexpr Metrics kMetrics{6, 12, 6, 14, 12, true};
 #endif
