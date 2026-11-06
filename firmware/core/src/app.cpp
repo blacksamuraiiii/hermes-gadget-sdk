@@ -1645,6 +1645,7 @@ void App::update_model() {
   m.qr = nullptr;
   m.dash.clear();
   m.hero = false;
+  m.robot = profile_.robot_face;
   m.caption_lines = 1;
   m.scroll = scroll_;
   m.level = level_;

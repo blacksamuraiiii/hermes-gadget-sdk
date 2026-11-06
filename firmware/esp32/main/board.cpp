@@ -764,6 +764,7 @@ BoardConfig make() {
   b.codec.vad_min_rms = 150.0f;
   b.buttons = {0, -1, -1, -1};  // BOOT only: talk, no cancel or scroll
   b.status_led = 21;
+  b.robot_face = true;  // 小墨's robot face (notes/设计-小墨表情.md), not the mascot bitmaps
   b.talk_label = "BOOT";
   return b;
 }

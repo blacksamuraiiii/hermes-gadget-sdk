@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.0
+
+### This fork (moji)
+
+The board gets its own face. Until now the moji board drew upstream's Hermes mascot
+bitmaps; 小墨 is a robot, and her moods are drawn from primitives instead, so a mood
+costs a few hundred bytes rather than a new bitmap and can move.
+
+- `hg/robot_face.hpp` + `src/robot_face.cpp`: the head, antenna, ears, eyes and mouth
+  from `Canvas` primitives at design coordinates measured off `notes/设计-小墨表情.md`
+  (240 px frame: head 105×89 at (68,78), eyes at (98,110) and (142,110)). Layers are
+  rounded-rect strokes drawn inside the path, and arcs with round caps, so the shape
+  stays smooth at any size; the face scales to whatever square the hero layout gives.
+- Six states: neutral, happy (smile eyes, open laugh, pink heart), sad (dropped brows,
+  frown, blue tear), thinking (straight lids, "o" mouth, three dots that take turns),
+  sleeping (closed eyes, "Zz" drifting), listening (wide eyes, "o" mouth, three blue
+  waves lighting one after another). Speaking pulses the "o" with the microphone level.
+  Blinking is the two frames of forty-five that the mascot already uses.
+- `DeviceProfile::robot_face` (set by the moji board in `board.cpp`) makes the hero box
+  draw that face; every other board keeps the mascot bitmaps. `UiModel::robot` carries
+  the flag, `robot_anim_key()` puts only the moving parts into the hero's animation
+  hash, and the dirty rows of a face change are the union of the old and new face, so a
+  smile back to neutral leaves no mouth behind.
+- `notes/设计-小墨表情.md` records the measured geometry and the two rounds of
+  comparison against the design sheet (ink IoU 0.70 at 240 px).
+
 ## 0.3.0
 
 ### This fork (moji)

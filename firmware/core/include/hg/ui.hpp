@@ -87,6 +87,9 @@ struct UiModel {
   // Show the mascot as large as fits, with headline/detail as a caption,
   // instead of the header + text layout.
   bool hero = false;
+  // Draw the robot face (hg/robot_face.hpp) in the hero box instead of the mascot
+  // bitmaps. A board's own artwork: the moji board has one, upstream's boards do not.
+  bool robot = false;
   uint8_t caption_lines = 1;  // hero: lines the detail may wrap to (then "..")
   // Wi-Fi setup: a scannable code for the temporary network, drawn centred in
   // the content band. Null on every other screen. Borrowed, not owned: the app

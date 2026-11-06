@@ -412,6 +412,7 @@ extern "C" void app_main(void) {
     profile.touch_screen = true;
     profile.extra_settings = {"touch_cancel"};
   }
+  profile.robot_face = board.robot_face;
   if (hal.mic == &g_codec_mic) {
     profile.mic_rate = hgp::CodecAudio::kRate;
     profile.vad_min_rms = board.codec.vad_min_rms;

@@ -277,6 +277,8 @@ struct BoardConfig {
   bool bluetooth = false;
   LatchPowerConfig latch_power;
   int status_led = -1;
+  // Draw this board's own robot face instead of the mascot bitmaps (hg/robot_face.hpp).
+  bool robot_face = false;
   const char* talk_label = "TALK";
   const char* cancel_label = "CANCEL";
 };

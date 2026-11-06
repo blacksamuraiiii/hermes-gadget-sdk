@@ -1,5 +1,7 @@
 #include "hg/ui.hpp"
 
+#include "hg/robot_face.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -95,6 +97,35 @@ int tri(uint32_t frame, int period) {
   return p < period / 2 ? p : period - p;
 }
 
+// What the robot face shows, from the same state the mascot frames use: a timed
+// emote first, then the screen.
+robot::Look robot_look(const UiModel& m) {
+  switch (m.emote) {
+    case Emote::Happy: return robot::Look::Happy;
+    case Emote::Sad: return robot::Look::Sad;
+    case Emote::Sleeping: return robot::Look::Sleeping;
+    case Emote::Auto: break;
+  }
+  switch (m.screen) {
+    case Screen::Listening: return robot::Look::Listening;
+    case Screen::Thinking: return robot::Look::Thinking;
+    case Screen::Responding: return m.speaking ? robot::Look::Speaking : robot::Look::Neutral;
+    default: return robot::Look::Neutral;
+  }
+}
+
+// The part of the robot face that moves, so a still face does not repaint.
+uint32_t robot_anim_key(const UiModel& m) {
+  const robot::Look look = robot_look(m);
+  switch (look) {
+    case robot::Look::Thinking: return static_cast<uint32_t>(look) * 16 + (m.frame / 3) % 4;
+    case robot::Look::Listening: return static_cast<uint32_t>(look) * 16 + (m.frame / 3) % 3;
+    case robot::Look::Sleeping: return static_cast<uint32_t>(look) * 16 + (m.frame / 5) % 6;
+    case robot::Look::Speaking: return static_cast<uint32_t>(look) * 16 + std::min<uint32_t>(m.level / 10, 10);
+    default: return static_cast<uint32_t>(look) * 16 + ((m.frame % 45) < 2 ? 1u : 0u);
+  }
+}
+
 mascot::Frame mascot_frame(const UiModel& m) {
   // Speaking wins: there are no happy-talk or sad-talk frames, so a timed face waits.
   if (m.screen == Screen::Responding && m.speaking) {
@@ -114,6 +145,7 @@ mascot::Frame mascot_frame(const UiModel& m) {
 uint32_t hero_anim_key(const UiModel& m) {
   Hash h;
   h.val(mascot_frame(m)).val(m.emote);  // sleeping is a constant frame, so the face itself must count
+  if (m.robot) h.val(robot_anim_key(m));  // her own face animates on its own clock
   switch (m.screen) {
     case Screen::Listening: h.val(m.frame % 3).val(m.level / 20); break;
     case Screen::Thinking:
@@ -817,6 +849,7 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
       break;
     default: break;
   }
+  if (m.robot) add(my, my + size);  // her own face fills the box
   y0 = std::max(top - 1, layout_.top_h);
   y1 = std::min(bottom + 2, static_cast<int>(info_.height) - layout_.bottom_h);
 }
@@ -832,7 +865,10 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
   const HeroGeom g = hero_geom(m);
   const int size = g.size, mx = g.x, my = g.y;
   const mascot::Anchors& a = mascot::anchors();
-  if (const mascot::Bitmap* b = mascot::pick(size, mascot_frame(m))) {
+  if (m.robot) {
+    // The board's own face: her shell, eyes and mood extras, all from primitives.
+    robot::draw(c, mx, my, size, robot_look(m), m.frame, m.level, kText, bg_);
+  } else if (const mascot::Bitmap* b = mascot::pick(size, mascot_frame(m))) {
     c.bitmap1(mx, my, b->size, b->size, b->bits, kText);
   }
   const int stroke = std::max(2, size / 48);
@@ -853,7 +889,7 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
       c.fill_circle(tx + i * gap, ty - i * gap / 2, r, i == active ? on : dim);
     }
   };
-  switch (m.screen) {
+  switch (m.robot ? Screen::Boot : m.screen) {  // the robot face draws its own waves and dots
     case Screen::Listening: {
       int lit = 1 + std::min(2, m.level / 34);
       waves(mx + size * a.ear_cup.x / 1000, my + size * a.ear_cup.y / 1000, +1, lit,
@@ -872,7 +908,7 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
     case Screen::Updating: dots(kAccent, kAccentDim); break;
     default: break;
   }
-  if (m.emote == Emote::Sleeping) {
+  if (!m.robot && m.emote == Emote::Sleeping) {
     // Asleep: the frame has the closed eyes already, so only the "Z" goes on top.
     const int zs = std::max(1, size / 96);
     int tx = mx + size * a.head_top_right.x / 1000;

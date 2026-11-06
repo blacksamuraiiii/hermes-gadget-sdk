@@ -16,6 +16,7 @@ set(HG_CORE_SOURCES
     src/mascot_data.cpp
     src/protocol.cpp
     src/qr.cpp
+    src/robot_face.cpp
     src/setup.cpp
     src/touch.cpp
     src/ui.cpp
