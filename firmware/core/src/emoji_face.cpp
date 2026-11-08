@@ -382,6 +382,83 @@ void draw_bored(Pen& p, uint32_t frame) {
   p.line(98, 186 + mbob, 142, 186 + mbob, 5, p.ink());
 }
 
+// Cool: GIF cool — wayfarer sunglasses over the eyes + a chain with a
+// diamond pendant below, the whole assembly bobbing. The GIF's sunglasses
+// (xiaodou-2.gif, 22 frames) span x=49-184, y=74-120, with a top bar and
+// two lens trapezoids joined by a nose gap; the diamond pendant is a
+// faceted gem at (121, 165) with chain links on either side. Translated
+// into the branch frame by (-8, -6) so the lenses sit on the branch eye
+// centres (72/145) and the pendant hangs under the face centre. The
+// sunglasses REPLACE the eyes (nothing is drawn underneath); the bob is a
+// gentle -4*cos(phase) so the glasses sit high at frame 0, matching the
+// GIF. The lenses are each two triangles (no polygon primitive in FacePen).
+void draw_cool(Pen& p, uint32_t frame) {
+  const float bob = -4.0f * std::cos(gif_phase(frame));
+  // Sunglasses: top bar + two lens trapezoids. The bar is a plain rect
+  // (square corners) so its overhang past the eyes is solid ink.
+  p.rect(42, 68 + bob, 140, 10, p.ink());
+  // Left lens: quad (50,76),(96,78),(92,108),(56,106).
+  p.triangle(50, 76 + bob, 96, 78 + bob, 92, 108 + bob, p.ink());
+  p.triangle(50, 76 + bob, 92, 108 + bob, 56, 106 + bob, p.ink());
+  // Right lens: quad (121,78),(168,76),(162,108),(127,110).
+  p.triangle(121, 78 + bob, 168, 76 + bob, 162, 108 + bob, p.ink());
+  p.triangle(121, 78 + bob, 162, 108 + bob, 127, 110 + bob, p.ink());
+  // Diamond pendant: faceted gem, centre (113, 159). The outline is a
+  // pentagon (flat top, pointed bottom); the facets are bg lines on top.
+  const float dx = 113.0f, dy = 159.0f + bob;
+  p.triangle(dx - 25, dy - 17, dx + 25, dy - 17, dx + 31, dy - 7, p.ink());
+  p.triangle(dx - 25, dy - 17, dx + 31, dy - 7, dx, dy + 21, p.ink());
+  p.triangle(dx - 25, dy - 17, dx, dy + 21, dx - 31, dy - 7, p.ink());
+  // Facets: horizontal table line + three lines to the point.
+  p.line(dx - 23, dy - 7, dx + 23, dy - 7, 3, p.bg());
+  p.line(dx - 25, dy - 17, dx, dy + 21, 3, p.bg());
+  p.line(dx + 25, dy - 17, dx, dy + 21, 3, p.bg());
+  p.line(dx, dy - 17, dx, dy + 21, 3, p.bg());
+  // Chain links: two oval rings per side, from the diamond up and out.
+  // Each ring is an ink ellipse with a bg ellipse cut out of it.
+  const float links[4][2] = {{82, 142}, {74, 140}, {144, 138}, {156, 134}};
+  for (int i = 0; i < 4; ++i) {
+    const float lx = links[i][0], ly = links[i][1] + bob;
+    p.fill_ellipse(lx, ly, 8, 5, p.ink());
+    p.fill_ellipse(lx, ly, 4, 2, p.bg());
+  }
+}
+
+// Hi: GIF Hi (xiaodou-4.gif, 19 frames) — the pill eyes grow (f0-4), shrink
+// (f5-7), then a big "Hi" appears with radiating lines (f8-18, rays pulsing
+// twice). This branch has NO text, so the "Hi" itself is dropped and the
+// greeting is carried by the eyes + the radiating lines: the branch oval
+// eyes do the grow-and-shrink wind-up over frames 0-7 (scale 1 -> 1.25 ->
+// 0.75 -> 1.0, one sine cycle), then stay put while three short lines flank
+// each eye in two pulses (centred f=10 and f=16), fading in and out. The
+// rays alone (without the "Hi") read as a sparkle/announcement around the
+// face, not as random dashes, because they stay attached to the eyes.
+void draw_hi(Pen& p, uint32_t frame) {
+  const uint32_t f = gif_frame(frame);
+  float scale = 1.0f;
+  if (f < 8) scale = 1.0f + 0.25f * std::sin(2.0f * kPi * static_cast<float>(f) / 8.0f);
+  const float rx = 25.0f * scale, ry = 50.0f * scale;
+  p.fill_ellipse(72, 112, rx, ry, p.ink());
+  p.fill_ellipse(145, 112, rx, ry, p.ink());
+  // Ray pulse envelope: two pulses centred at f=10 and f=16, ~5 frames wide.
+  float env = 0.0f;
+  for (float c : {10.0f, 16.0f}) {
+    const float d = std::fabs(static_cast<float>(f) - c);
+    env = std::max(env, std::max(0.0f, 1.0f - d / 2.5f));
+  }
+  if (env > 0.05f) {
+    const float len = 12.0f * env;
+    // Left rays: inner points at x=40-42, fanning up-left / left / down-left.
+    p.line(42, 98, 42 - len, 98 - len * 0.6f, 4, p.ink());
+    p.line(40, 112, 40 - len, 112, 4, p.ink());
+    p.line(42, 126, 42 - len, 126 + len * 0.6f, 4, p.ink());
+    // Right rays: mirrored.
+    p.line(175, 98, 175 + len, 98 - len * 0.6f, 4, p.ink());
+    p.line(177, 112, 177 + len, 112, 4, p.ink());
+    p.line(175, 126, 175 + len, 126 + len * 0.6f, 4, p.ink());
+  }
+}
+
 }  // namespace
 
 float zoom() { return kZoom; }
@@ -399,10 +476,11 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
   // arcs, sleeping is already shut, and XX eyes have nothing to close; Laughing,
   // Loving and Excited are exempt too — their eyes are the expression ("><",
   // hearts, stars), not open eyes that can close; Bored's half-open eyes are
-  // already drooping and must not close further.
+  // already drooping and must not close further; Cool's eyes are covered by
+  // sunglasses and Hi's are mid-grow, so neither blinks either.
   const bool blink = look != Look::Happy && look != Look::Sleeping && look != Look::Disconnected &&
                      look != Look::Laughing && look != Look::Loving && look != Look::Excited &&
-                     look != Look::Bored && (frame % 45) < 2;
+                     look != Look::Bored && look != Look::Cool && look != Look::Hi && (frame % 45) < 2;
 
   switch (look) {
     case Look::Neutral:
@@ -507,6 +585,12 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
       break;
     case Look::Bored:  // half-disc eyes and a flat mouth; already half-shut
       draw_bored(p, frame);
+      break;
+    case Look::Cool:  // sunglasses + diamond necklace; eyes covered, no blink
+      draw_cool(p, frame);
+      break;
+    case Look::Hi:  // growing eyes, then radiating lines (no "Hi" text)
+      draw_hi(p, frame);
       break;
     case Look::Connecting:
       if (blink) {

@@ -61,7 +61,8 @@ TEST("emoji face: every state look draws a face, and each one differs from neutr
                                     hg::emoji::Look::Loving, hg::emoji::Look::Angry,
                                     hg::emoji::Look::Shocked, hg::emoji::Look::Embarrassed,
                                     hg::emoji::Look::Winking, hg::emoji::Look::Excited,
-                                    hg::emoji::Look::Bored, hg::emoji::Look::Connecting,
+                                    hg::emoji::Look::Bored, hg::emoji::Look::Cool,
+                                    hg::emoji::Look::Hi, hg::emoji::Look::Connecting,
                                     hg::emoji::Look::Disconnected};
   for (hg::emoji::Look look : others) {
     const Frame fb = render(look);
@@ -122,6 +123,9 @@ TEST("emoji face: the animated parts move, the still ones do not") {
   // Excited's stars pulse and its grin breathes; Bored's half-discs droop.
   CHECK(differences(render(hg::emoji::Look::Excited, 0), render(hg::emoji::Look::Excited, 5)) > 5);
   CHECK(differences(render(hg::emoji::Look::Bored, 0), render(hg::emoji::Look::Bored, 5)) > 5);
+  // Cool's sunglasses and necklace bob; Hi's eyes grow and its rays pulse.
+  CHECK(differences(render(hg::emoji::Look::Cool, 0), render(hg::emoji::Look::Cool, 5)) > 5);
+  CHECK(differences(render(hg::emoji::Look::Hi, 2), render(hg::emoji::Look::Hi, 10)) > 5);
 }
 
 TEST("emoji face: the speaking bars follow the mic level in batch 2") {
@@ -216,6 +220,36 @@ TEST("emoji face: bored has half-disc eyes and a flat mouth") {
   // The flat mouth line is design (98-142, 186): canvas x 103-136, y 154-155.
   CHECK(count_rect(bored, kInk, 103, 154, 137, 156) > 10);
   CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 103, 154, 137, 156) == 0);
+}
+
+TEST("emoji face: cool has sunglasses over the eyes and a diamond pendant") {
+  // The sunglasses top bar runs design x=42-182, y=68-78 (bob +/-4): at
+  // design (44, 73), canvas (63, 70), the bar is ink for Cool at every
+  // frame, but background for Neutral (left of the left oval eye).
+  const Frame cool = render(hg::emoji::Look::Cool);
+  CHECK(pixel(cool, 63, 70) == kInk);
+  CHECK(pixel(render(hg::emoji::Look::Neutral), 63, 70) == kBg);
+  // The diamond pendant sits below the eyes (design y=138-180): its lower
+  // part (design x 105-120, y 165-178; canvas x 109-120, y 139-148) is ink
+  // for Cool and background for Neutral, whose eyes end at design y=162.
+  CHECK(count_rect(cool, kInk, 109, 139, 120, 148) > 20);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 109, 139, 120, 148) == 0);
+}
+
+TEST("emoji face: hi grows its eyes then flashes rays, with no text") {
+  // The eyes grow to 1.25x at frame 2: design (72, 52) is inside the grown
+  // left eye (canvas (84, 54)) but above Neutral's oval (top design y=62).
+  const Frame hi_grown = render(hg::emoji::Look::Hi, 2);
+  CHECK(pixel(hi_grown, 84, 54) == kInk);
+  CHECK(pixel(render(hg::emoji::Look::Neutral), 84, 54) == kBg);
+  // The radiating lines flank the eyes at frame 10 (first pulse peak): the
+  // left middle ray runs design (40, 112) to (28, 112), canvas x 51-60,
+  // y 99. Neutral has nothing there.
+  const Frame hi_rays = render(hg::emoji::Look::Hi, 10);
+  CHECK(count_rect(hi_rays, kInk, 51, 98, 61, 101) > 5);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 51, 98, 61, 101) == 0);
+  // No rays at frame 0 (the pulses are centred at f=10 and f=16).
+  CHECK(count_rect(render(hg::emoji::Look::Hi, 0), kInk, 51, 98, 61, 101) == 0);
 }
 
 // Confused is gone: it is not in the Look enum any more (this file no longer
