@@ -74,14 +74,19 @@ TEST("emoji face: the looks carry their own colours") {
   const auto wave = hg::rgb565(80, 160, 255);
   const auto ring = hg::rgb565(255, 205, 0);
   const auto zz = hg::rgb565(170, 170, 190);
-  CHECK(count(render(hg::emoji::Look::Happy), pink) > 40);        // the heart
+  // Happy no longer has a pink heart (the GIF has maracas instead); the pink
+  // lives only in Loving's heart eyes now.
+  CHECK(count(render(hg::emoji::Look::Happy), pink) == 0);
   CHECK(count(render(hg::emoji::Look::Loving), pink) > 40);       // the heart eyes
   CHECK(count(render(hg::emoji::Look::Sad), sky) > 30);           // the tears
   CHECK(count(render(hg::emoji::Look::Shocked), sky) > 5);        // the sweat drop
-  CHECK(count(render(hg::emoji::Look::Listening), wave) > 40);    // the three arcs
+  // Listening arcs breathe: at frame 5 the inner arc is at full brightness.
+  CHECK(count(render(hg::emoji::Look::Listening, 5), wave) > 20); // the inner arc
   CHECK(count(render(hg::emoji::Look::Speaking), wave) > 20);     // the waveform
   CHECK(count(render(hg::emoji::Look::Connecting), ring) > 100);  // the yellow ring
-  CHECK(count(render(hg::emoji::Look::Sleeping), zz) > 40);       // the Zz
+  // Sleeping's single "z" appears only frames 13-15 of the 20-frame cycle.
+  CHECK(count(render(hg::emoji::Look::Sleeping, 14), zz) > 20);   // the "z"
+  CHECK(count(render(hg::emoji::Look::Sleeping, 10), zz) == 0);   // ...not at frame 10
   CHECK(count(render(hg::emoji::Look::Neutral), pink) == 0);      // and nowhere else
   CHECK(count(render(hg::emoji::Look::Neutral), sky) == 0);
   CHECK(count(render(hg::emoji::Look::Neutral), wave) == 0);
@@ -98,18 +103,21 @@ TEST("emoji face: the animated parts move, the still ones do not") {
   CHECK(differences(render(hg::emoji::Look::Neutral, 10), render(hg::emoji::Look::Neutral, 0)) > 20);
   // The thinking dots take turns.
   CHECK(differences(render(hg::emoji::Look::Thinking, 3), render(hg::emoji::Look::Thinking, 12)) > 5);
-  // The Zz drifts.
-  CHECK(differences(render(hg::emoji::Look::Sleeping, 5), render(hg::emoji::Look::Sleeping, 20)) > 5);
+  // Sleeping's single "z" appears only frames 13-15: frame 10 has none,
+  // frame 14 has one.
+  CHECK(differences(render(hg::emoji::Look::Sleeping, 10), render(hg::emoji::Look::Sleeping, 14)) > 5);
   // The connecting ring turns: a quarter turn is a different picture.
   CHECK(differences(render(hg::emoji::Look::Connecting, 0), render(hg::emoji::Look::Connecting, 5)) > 20);
-  // A laugh has no blink and no drift: the same frame twice is the same picture.
-  CHECK(render(hg::emoji::Look::Happy, 3) == render(hg::emoji::Look::Happy, 33));
   // The GIF-ported moods animate on the 20-frame cycle.
   CHECK(differences(render(hg::emoji::Look::Sad, 5), render(hg::emoji::Look::Sad, 15)) > 5);
   CHECK(differences(render(hg::emoji::Look::Laughing, 0), render(hg::emoji::Look::Laughing, 5)) > 5);
   CHECK(differences(render(hg::emoji::Look::Winking, 0), render(hg::emoji::Look::Winking, 10)) > 20);
   CHECK(differences(render(hg::emoji::Look::Shocked, 0), render(hg::emoji::Look::Shocked, 5)) > 5);
   CHECK(differences(render(hg::emoji::Look::Silly, 0), render(hg::emoji::Look::Silly, 5)) > 5);
+  // The three aligned looks animate too: listening arcs breathe, happy
+  // maracas sway.
+  CHECK(differences(render(hg::emoji::Look::Listening, 0), render(hg::emoji::Look::Listening, 5)) > 5);
+  CHECK(differences(render(hg::emoji::Look::Happy, 0), render(hg::emoji::Look::Happy, 5)) > 5);
 }
 
 TEST("emoji face: the speaking bars follow the mic level in batch 2") {
@@ -142,6 +150,40 @@ TEST("emoji face: silly has a question mark") {
   const Frame silly = render(hg::emoji::Look::Silly);
   CHECK(count_rect(silly, kInk, 184, 36, 198, 59) > 5);
   CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 184, 36, 198, 59) == 0);
+}
+
+TEST("emoji face: sleeping has U eyes and a T mouth, not bars") {
+  // The U eyes are bottom-half arcs at design (72, 86) and (145, 86), r=22:
+  // canvas y for the arc bottom (design y~108) is 15+0.75*108 = 96. The old
+  // bars were horizontal bars at design y=128 (canvas y 111).
+  const Frame sleeping = render(hg::emoji::Look::Sleeping);
+  // Ink at the U bottom (canvas x~84, y~96) and none where the old bar was.
+  CHECK(pixel(sleeping, 84, 96) == kInk);
+  CHECK(count_rect(sleeping, kInk, 57, 111, 63, 117) == 0);
+  // The T mouth bar is design (85-150, 134), w=25. Between the two oval
+  // eyes (canvas x gap 103-120) the bar is the only ink: canvas x 106-117,
+  // y 112-122.
+  CHECK(count_rect(sleeping, kInk, 106, 112, 117, 122) > 10);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 106, 112, 117, 122) == 0);
+}
+
+TEST("emoji face: happy has maracas and no heart") {
+  // The maraca rings are at design (64, 137) and (102, 137), r=13: canvas
+  // (78, 118) and (107, 118). The old pink heart was at design (200, 66).
+  const Frame happy = render(hg::emoji::Look::Happy);
+  CHECK(count_rect(happy, kInk, 70, 110, 86, 126) > 10);   // left ring
+  CHECK(count_rect(happy, kInk, 99, 110, 115, 126) > 10);  // right ring
+  CHECK(count_rect(happy, kInk, 180, 60, 190, 70) == 0);   // no heart there
+}
+
+TEST("emoji face: listening arcs sit in the upper-right corner") {
+  // GIF arcs are centred design (163, 74), radii 16/28/40. At frame 5 the
+  // inner arc (r=16) is at full brightness: it runs design (163, 58) to
+  // (179, 74), canvas (152, 58) to (164, 70). The old arcs were centred at
+  // design (172, 112), r up to 56.
+  const Frame listening = render(hg::emoji::Look::Listening, 5);
+  CHECK(count_rect(listening, hg::rgb565(80, 160, 255), 152, 58, 164, 70) > 5);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), hg::rgb565(80, 160, 255), 152, 58, 164, 70) == 0);
 }
 
 // Confused is gone: it is not in the Look enum any more (this file no longer

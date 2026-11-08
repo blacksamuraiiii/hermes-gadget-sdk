@@ -35,8 +35,7 @@ constexpr uint16_t kWave = rgb565(80, 160, 255);       // listening arcs, speaki
 constexpr uint16_t kPink = rgb565(247, 117, 146);
 constexpr uint16_t kSky = rgb565(120, 200, 255);
 constexpr uint16_t kRingYellow = rgb565(255, 205, 0);
-constexpr uint16_t kZz = rgb565(170, 170, 190);        // the sleeping Z, nearer the head
-constexpr uint16_t kZzSmall = rgb565(138, 138, 158);   // ...and the smaller one behind it
+constexpr uint16_t kZz = rgb565(170, 170, 190);        // the sleeping Z
 
 // The face is drawn a little larger than the box the hero layout hands us: the
 // design frame is 240 px square and the artwork fills most of it, so 1.2 lands
@@ -63,10 +62,24 @@ void draw_base_eyes(Pen& p, float cy = 112.0f) {
 // Closed eyes: the blink, and the shape a sleeping face keeps.
 void draw_bar(Pen& p, float cx, float cy) { p.solid_round(cx - 25, cy - 6, 50, 12, 6, p.ink()); }
 
-// The listening arcs: three curves upper-right, slanting to the corner (a wifi
-// fan turned ~45 deg), the ear that says she is listening.
-void draw_listening_arcs(Pen& p) {
-  for (float r : {28.0f, 42.0f, 56.0f}) p.arc(172, 112, r, 5, 270, 360, kWave);
+// Scale a colour's brightness by f (0..1), keeping its hue. Used for the
+// listening arcs' brightness wave.
+uint16_t dim_rgb(uint8_t r, uint8_t g, uint8_t b, float f) {
+  return rgb565(static_cast<uint8_t>(r * f), static_cast<uint8_t>(g * f),
+                static_cast<uint8_t>(b * f));
+}
+
+// The listening arcs: three curves in the upper-right corner, GIF geometry —
+// centre (163, 74) [GIF (178, 80) translated], radii 16/28/40, NE quadrant,
+// width 4. A brightness wave travels outward: the inner arc peaks first.
+void draw_listening_arcs(Pen& p, uint32_t frame) {
+  const float radii[3] = {16.0f, 28.0f, 40.0f};
+  const float phase = gif_phase(frame);
+  for (int i = 0; i < 3; ++i) {
+    const float g = 70.0f + 170.0f * (0.5f + 0.5f * std::sin(phase - i * 2.0f * kPi / 3.0f));
+    const float f = g / 240.0f;  // 0.29 (dim) to 1.0 (full)
+    p.arc(163, 74, radii[i], 4, 270, 360, dim_rgb(80, 160, 255, f));
+  }
 }
 
 // The three thinking dots, up and to the far side, one of them breathing.
@@ -85,16 +98,35 @@ void draw_zed(Pen& p, float x, float y, float s, uint16_t color) {
   p.line(x, y + s, x + s, y + s, 2.5f, color);
 }
 
-void draw_zz(Pen& p, uint32_t frame) {
-  const float drift = static_cast<float>((frame / 5) % 6) - 2.5f;
-  draw_zed(p, 179, 70 + drift, 16, kZz);   // the big one, nearer the head
-  draw_zed(p, 197, 81 + drift, 8, kZzSmall);
+// A maraca/lollipop: a hollow ring on a tube handle. The ring is a full
+// circle outline; the handle is a rounded-rect tube outline below it.
+void draw_maraca(Pen& p, float cx, float cy_ring) {
+  p.arc(cx, cy_ring, 15, 5, 0, 360, p.ink());
+  p.outline_round(cx - 7, cy_ring + 12, 14, 40, 7, 5, p.ink());
 }
 
-void draw_heart(Pen& p, float cx, float cy, float r) {
-  p.disc(cx - r * 0.45f, cy - r * 0.35f, r * 0.6f, kPink);
-  p.disc(cx + r * 0.45f, cy - r * 0.35f, r * 0.6f, kPink);
-  p.triangle(cx - r, cy - r * 0.05f, cx + r, cy - r * 0.05f, cx, cy + r, kPink);
+// Happy: GIF happy — the same ∩∩ arcs, plus two maracas shaking side to
+// side in opposite phase (they cross over). No heart.
+void draw_happy_maracas(Pen& p, uint32_t frame) {
+  const float sway = 20.0f * std::sin(gif_phase(frame));
+  draw_maraca(p, 64 - sway, 137);
+  draw_maraca(p, 102 + sway, 137);
+}
+
+// Sleeping: GIF sleepy — two U-shaped closed eyes, a flat T mouth, and a
+// single small "z" that appears briefly (frames 13-15 of the 20-frame cycle).
+// The U eyes are bottom-half arcs; the T mouth is a horizontal bar (thick
+// line) with a stem below it, left of centre.
+void draw_sleeping(Pen& p, uint32_t frame) {
+  // U eyes: bottom-half arcs, top at y=86, r=22.
+  p.arc(72, 86, 22, 8, 0, 180, p.ink());
+  p.arc(145, 86, 22, 8, 0, 180, p.ink());
+  // T mouth: bar from (85, 134) to (150, 134), width 25; stem at x=82-94.
+  p.line(85, 134, 150, 134, 25, p.ink());
+  p.solid_round(82, 147, 12, 16, 6, p.ink());
+  // "z": visible only frames 13-15, matching the GIF's brief appearance.
+  const uint32_t f = gif_frame(frame);
+  if (f >= 13 && f < 16) draw_zed(p, 197, 111, 20, kZz);
 }
 
 void draw_tear(Pen& p, float cx, float cy) {
@@ -214,13 +246,13 @@ void draw_speaking_bars(Pen& p, uint32_t frame, uint8_t level) {
   }
 }
 
-// Laughing: ">" and "<" eyes + a big open mouth (bottom half-ellipse, 76
-// wide, height 24-40 pulsing).
+// Laughing: ">" and "<" eyes + a big open mouth (bottom half-ellipse, 92
+// wide, height 30-56 pulsing).
 void draw_laughing(Pen& p, uint32_t frame) {
   draw_chevron_eye(p, 72, 112, 15, +1, 6);
   draw_chevron_eye(p, 145, 112, 15, -1, 6);
-  const float h = 24.0f + 16.0f * (0.5f + 0.5f * std::sin(gif_phase(frame)));
-  p.half_ellipse(120, 162, 38, h, p.ink());
+  const float h = 30.0f + 26.0f * (0.5f + 0.5f * std::sin(gif_phase(frame)));
+  p.half_ellipse(120, 162, 46, h, p.ink());
 }
 
 // Loving: two big heart eyes, s=20, gentle pulse + bob.
@@ -348,7 +380,7 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
       } else {
         draw_base_eyes(p);
       }
-      draw_listening_arcs(p);
+      draw_listening_arcs(p, frame);
       break;
     case Look::Thinking:
       if (blink) {
@@ -368,10 +400,10 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
       }
       draw_speaking_bars(p, frame, level);
       break;
-    case Look::Happy:  // the arcs are the eyes; a small pink heart beside them
+    case Look::Happy:  // GIF happy: ∩∩ arcs + two shaking maracas (no heart)
       p.arc(72, 112, 41, 10, 180, 360, p.ink());
       p.arc(168, 112, 41, 10, 180, 360, p.ink());
-      draw_heart(p, 200, 66, 7.5f);
+      draw_happy_maracas(p, frame);
       break;
     case Look::Sad:  // GIF sad v7: drooping half-discs, wavy mouth, two tears per eye
       if (blink) {
@@ -381,10 +413,8 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
         draw_sad(p, frame);
       }
       break;
-    case Look::Sleeping:  // closed eyes, all the time, and the drifting Zz
-      p.solid_round(42, 128, 60, 12, 6, p.ink());
-      p.solid_round(138, 128, 60, 12, 6, p.ink());
-      draw_zz(p, frame);
+    case Look::Sleeping:  // GIF sleepy: U eyes, T mouth, a brief "z"
+      draw_sleeping(p, frame);
       break;
     case Look::Silly:  // left eye open, right "<" eye, and a "?"
       if (blink) {
