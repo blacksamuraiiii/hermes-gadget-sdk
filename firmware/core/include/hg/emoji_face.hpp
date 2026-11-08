@@ -12,9 +12,10 @@ namespace hg::emoji {
 
 // What the face shows. The app derives it from the link, the emote and the
 // screen, so one place decides what she looks like. The mood looks
-// (Laughing, Loving, Winking, Angry, Shocked, Embarrassed, Silly) need host
-// mood and fall back to Neutral until then; Silly covers Confused (removed:
-// the two differ only in the right eye, and Silly's "<" reads better).
+// (Laughing, Loving, Winking, Angry, Shocked, Embarrassed, Silly, Excited,
+// Bored) need host mood and fall back to Neutral until then; Silly covers
+// Confused (removed: the two differ only in the right eye, and Silly's "<"
+// reads better).
 enum class Look : uint8_t {
   Neutral,
   Happy,
@@ -30,6 +31,8 @@ enum class Look : uint8_t {
   Shocked,
   Embarrassed,
   Winking,
+  Excited,
+  Bored,
   Connecting,
   Disconnected
 };

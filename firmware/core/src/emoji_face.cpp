@@ -344,6 +344,44 @@ void draw_silly(Pen& p, uint32_t frame) {
   draw_question(p);
 }
 
+// Excited: two four-pointed star eyes + a wide grin arc (an ARC LINE, not a
+// filled mouth — that is what tells it apart from Laughing's big open
+// mouth). GIF geometry: stars at (72, 112)/(145, 112), s=20, pulsing scale
+// 1.0 +/- 0.12 with a +/-2 px bob, phase-offset 1.0 rad between the eyes;
+// grin arc centre (120, 152) [GIF (120, 158), y-6], radius 40 +/- 4,
+// angles 25-155 deg (the bottom arc), width 8.
+void draw_excited(Pen& p, uint32_t frame) {
+  const float phase = gif_phase(frame);
+  const float centres[2] = {72.0f, 145.0f};
+  for (int i = 0; i < 2; ++i) {
+    const float off = (i == 0) ? 0.0f : 1.0f;
+    const float sc = 1.0f + 0.12f * std::sin(phase + off);
+    const float bob = 2.0f * std::cos(phase + off);
+    draw_star4(p, centres[i], 112.0f + bob, 20.0f * sc, p.ink());
+  }
+  const float r = 40.0f + 4.0f * (0.5f + 0.5f * std::sin(phase + 1.0f));
+  p.arc(120, 152, r, 8, 25, 155, p.ink());
+}
+
+// Bored: two half-disc eyes (bottom half, flat top) that slowly droop, plus
+// a flat mouth line. GIF geometry: half-discs r=20 at (72, 112)/(145, 112),
+// droop = 3*sin(phase) moving the whole half-disc; mouth line (98, 186) to
+// (142, 186) [GIF y=192, y-6], width 5, with a 1.5 px cosine bob
+// phase-offset from the droop. The half-discs are drawn as full discs with
+// the top half cut out of the bg, the same trick Sad uses.
+void draw_bored(Pen& p, uint32_t frame) {
+  const float phase = gif_phase(frame);
+  const float droop = 3.0f * std::sin(phase);
+  const float centres[2] = {72.0f, 145.0f};
+  for (int i = 0; i < 2; ++i) {
+    const float cx = centres[i], cy = 112.0f + droop;
+    p.disc(cx, cy, 20, p.ink());
+    p.rect(cx - 20, cy - 20, 40, 20, p.bg());
+  }
+  const float mbob = 1.5f * std::cos(phase);
+  p.line(98, 186 + mbob, 142, 186 + mbob, 5, p.ink());
+}
+
 }  // namespace
 
 float zoom() { return kZoom; }
@@ -358,11 +396,13 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
   Pen p(c, bx, by, static_cast<int>(grown), ink, bg);
 
   // A blink is two frames of forty-five: the open eyes close. Happy keeps its
-  // arcs, sleeping is already shut, and XX eyes have nothing to close; Laughing
-  // and Loving are exempt too — their eyes are the expression ("><" and
-  // hearts), not open eyes that can close.
+  // arcs, sleeping is already shut, and XX eyes have nothing to close; Laughing,
+  // Loving and Excited are exempt too — their eyes are the expression ("><",
+  // hearts, stars), not open eyes that can close; Bored's half-open eyes are
+  // already drooping and must not close further.
   const bool blink = look != Look::Happy && look != Look::Sleeping && look != Look::Disconnected &&
-                     look != Look::Laughing && look != Look::Loving && (frame % 45) < 2;
+                     look != Look::Laughing && look != Look::Loving && look != Look::Excited &&
+                     look != Look::Bored && (frame % 45) < 2;
 
   switch (look) {
     case Look::Neutral:
@@ -461,6 +501,12 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
       } else {
         draw_winking(p, frame);
       }
+      break;
+    case Look::Excited:  // star eyes and a wide grin arc; never blinks away
+      draw_excited(p, frame);
+      break;
+    case Look::Bored:  // half-disc eyes and a flat mouth; already half-shut
+      draw_bored(p, frame);
       break;
     case Look::Connecting:
       if (blink) {

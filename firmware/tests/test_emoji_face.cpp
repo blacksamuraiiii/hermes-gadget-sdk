@@ -60,7 +60,8 @@ TEST("emoji face: every state look draws a face, and each one differs from neutr
                                     hg::emoji::Look::Silly, hg::emoji::Look::Laughing,
                                     hg::emoji::Look::Loving, hg::emoji::Look::Angry,
                                     hg::emoji::Look::Shocked, hg::emoji::Look::Embarrassed,
-                                    hg::emoji::Look::Winking, hg::emoji::Look::Connecting,
+                                    hg::emoji::Look::Winking, hg::emoji::Look::Excited,
+                                    hg::emoji::Look::Bored, hg::emoji::Look::Connecting,
                                     hg::emoji::Look::Disconnected};
   for (hg::emoji::Look look : others) {
     const Frame fb = render(look);
@@ -118,6 +119,9 @@ TEST("emoji face: the animated parts move, the still ones do not") {
   // maracas sway.
   CHECK(differences(render(hg::emoji::Look::Listening, 0), render(hg::emoji::Look::Listening, 5)) > 5);
   CHECK(differences(render(hg::emoji::Look::Happy, 0), render(hg::emoji::Look::Happy, 5)) > 5);
+  // Excited's stars pulse and its grin breathes; Bored's half-discs droop.
+  CHECK(differences(render(hg::emoji::Look::Excited, 0), render(hg::emoji::Look::Excited, 5)) > 5);
+  CHECK(differences(render(hg::emoji::Look::Bored, 0), render(hg::emoji::Look::Bored, 5)) > 5);
 }
 
 TEST("emoji face: the speaking bars follow the mic level in batch 2") {
@@ -184,6 +188,34 @@ TEST("emoji face: listening arcs sit in the upper-right corner") {
   const Frame listening = render(hg::emoji::Look::Listening, 5);
   CHECK(count_rect(listening, hg::rgb565(80, 160, 255), 152, 58, 164, 70) > 5);
   CHECK(count_rect(render(hg::emoji::Look::Neutral), hg::rgb565(80, 160, 255), 152, 58, 164, 70) == 0);
+}
+
+TEST("emoji face: excited has star eyes and a grin arc, not a filled mouth") {
+  // The grin arc is centred design (120, 152), radius ~40, bottom at design
+  // y~192: canvas x 105-135, y 154-165 has ink on the arc.
+  const Frame excited = render(hg::emoji::Look::Excited);
+  CHECK(count_rect(excited, kInk, 105, 154, 136, 165) > 5);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 105, 154, 136, 165) == 0);
+  // The grin is only an arc line: the interior just under the arc's centre
+  // (design (120, 170), canvas (120, 142)) is background. Laughing's filled
+  // half-ellipse mouth is ink there.
+  CHECK(pixel(excited, 120, 142) == kBg);
+  CHECK(pixel(render(hg::emoji::Look::Laughing), 120, 142) == kInk);
+  // Excited differs from Laughing: same grin-sized mouth, different eyes.
+  CHECK(differences(excited, render(hg::emoji::Look::Laughing)) > 40);
+}
+
+TEST("emoji face: bored has half-disc eyes and a flat mouth") {
+  // The half-discs are cut at the flat top (design y=112 at frame 10, droop
+  // 0): design (72, 95) is background for Bored but ink for Neutral's oval.
+  const Frame bored = render(hg::emoji::Look::Bored);
+  CHECK(pixel(bored, 84, 86) == kBg);
+  CHECK(pixel(render(hg::emoji::Look::Neutral), 84, 86) == kInk);
+  // The half-disc bottom is ink: design (72, 130), canvas (84, 112).
+  CHECK(pixel(bored, 84, 112) == kInk);
+  // The flat mouth line is design (98-142, 186): canvas x 103-136, y 154-155.
+  CHECK(count_rect(bored, kInk, 103, 154, 137, 156) > 10);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 103, 154, 137, 156) == 0);
 }
 
 // Confused is gone: it is not in the Look enum any more (this file no longer
