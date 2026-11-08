@@ -93,6 +93,7 @@ typedef struct hgsim_config {
   int no_top_band;         /* no touch: the header line starts at the top of the area */
   int body_rows_cap;       /* most body lines a text screen may use; 0 = no cap */
   int robot_face;          /* draw the board's own robot face instead of the mascot */
+  int emoji_face;          /* draw the board's own pure-emoji face instead */
   const char* greeting;    /* idle headline; NULL keeps the translated default */
 } hgsim_config;
 

@@ -1,6 +1,7 @@
 #include "hg/ui.hpp"
 
 #include "hg/robot_face.hpp"
+#include "hg/emoji_face.hpp"
 
 #include <cstdio>
 
@@ -128,6 +129,43 @@ uint32_t robot_anim_key(const UiModel& m) {
   }
 }
 
+// What the pure-emoji face shows. The link comes first: without a link the face
+// IS the link state (a spinner while connecting, XX eyes while disconnected),
+// and only an online link shows the state faces. Then the timed emote, then
+// the screen — the same order as robot_look.
+emoji::Look emoji_look(const UiModel& m) {
+  switch (m.link) {
+    case Link::Connecting:
+    case Link::Network: return emoji::Look::Connecting;
+    case Link::Offline: return emoji::Look::Disconnected;
+    case Link::Online: break;
+  }
+  switch (m.emote) {
+    case Emote::Happy: return emoji::Look::Happy;
+    case Emote::Sad: return emoji::Look::Sad;
+    case Emote::Sleeping: return emoji::Look::Sleeping;
+    case Emote::Confused: return emoji::Look::Confused;
+    case Emote::Auto: break;
+  }
+  switch (m.screen) {
+    case Screen::Listening: return emoji::Look::Listening;
+    case Screen::Thinking: return emoji::Look::Thinking;
+    case Screen::Responding: return m.speaking ? emoji::Look::Speaking : emoji::Look::Neutral;
+    default: return emoji::Look::Neutral;
+  }
+}
+
+// The part of the pure-emoji face that moves, so a still face does not repaint.
+uint32_t emoji_anim_key(const UiModel& m) {
+  const emoji::Look look = emoji_look(m);
+  switch (look) {
+    case emoji::Look::Thinking: return static_cast<uint32_t>(look) * 16 + (m.frame / 3) % 4;
+    case emoji::Look::Sleeping: return static_cast<uint32_t>(look) * 16 + (m.frame / 5) % 6;
+    case emoji::Look::Connecting: return static_cast<uint32_t>(look) * 16 + (m.frame % 20);
+    default: return static_cast<uint32_t>(look) * 16 + ((m.frame % 45) < 2 ? 1u : 0u);
+  }
+}
+
 mascot::Frame mascot_frame(const UiModel& m) {
   // Speaking wins: there are no happy-talk or sad-talk frames, so a timed face waits.
   if (m.screen == Screen::Responding && m.speaking) {
@@ -137,6 +175,7 @@ mascot::Frame mascot_frame(const UiModel& m) {
     case Emote::Happy: return mascot::Frame::Happy;
     case Emote::Sad: return mascot::Frame::Sad;
     case Emote::Sleeping: return mascot::Frame::Blink;  // closed eyes, all the time
+    case Emote::Confused: break;  // the mascot has no confused frame; the emoji face draws it
     case Emote::Auto: break;
   }
   return m.frame % 45 < 2 ? mascot::Frame::Blink : mascot::Frame::Idle;  // blink every ~4.5 s
@@ -148,6 +187,7 @@ uint32_t hero_anim_key(const UiModel& m) {
   Hash h;
   h.val(mascot_frame(m)).val(m.emote);  // sleeping is a constant frame, so the face itself must count
   if (m.robot) h.val(robot_anim_key(m));  // her own face animates on its own clock
+  if (m.emoji) h.val(emoji_anim_key(m));  // the pure-emoji face, same idea
   switch (m.screen) {
     case Screen::Listening: h.val(m.frame % 3).val(m.level / 20); break;
     case Screen::Thinking:
@@ -958,7 +998,11 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
   hero_caption_y_ = g.caption_y;
   hero_band_h_ = y1 - y0;
   const mascot::Anchors& a = mascot::anchors();
-  if (m.robot) {
+  if (m.emoji) {
+    // The board's pure-emoji face: eyes only, no head, no antenna, no text.
+    // The link state is the face itself, so there is no lamp to pass.
+    emoji::draw(c, mx, my, size, emoji_look(m), m.frame, m.level, kText, bg_);
+  } else if (m.robot) {
     // The board's own face: her shell, eyes and mood extras, all from primitives.
     // Her antenna ball is the board's link lamp: green on line, yellow while
     // connecting, red without a link.
@@ -991,7 +1035,7 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
       c.fill_circle(tx + i * gap, ty - i * gap / 2, r, i == active ? on : dim);
     }
   };
-  switch (m.robot ? Screen::Boot : m.screen) {  // the robot face draws its own waves and dots
+  switch ((m.robot || m.emoji) ? Screen::Boot : m.screen) {  // a board face draws its own waves and dots
     case Screen::Listening: {
       int lit = 1 + std::min(2, m.level / 34);
       waves(mx + size * a.ear_cup.x / 1000, my + size * a.ear_cup.y / 1000, +1, lit,
@@ -1010,7 +1054,7 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
     case Screen::Updating: dots(kAccent, kAccentDim); break;
     default: break;
   }
-  if (!m.robot && m.emote == Emote::Sleeping) {
+  if (!m.robot && !m.emoji && m.emote == Emote::Sleeping) {
     // Asleep: the frame has the closed eyes already, so only the "Z" goes on top.
     const int zs = std::max(1, size / 96);
     int tx = mx + size * a.head_top_right.x / 1000;

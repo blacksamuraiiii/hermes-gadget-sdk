@@ -764,7 +764,8 @@ BoardConfig make() {
   b.codec.vad_min_rms = 150.0f;
   b.buttons = {0, -1, -1, -1};  // BOOT only: talk, no cancel or scroll
   b.status_led = 21;
-  b.robot_face = true;  // 小墨's robot face (notes/设计-小墨表情.md), not the mascot bitmaps
+  b.emoji_face = true;  // 小墨's pure-emoji face (notes/设计-小墨纯表情.md), not the robot head
+  // (feat/moji-emoji-only: the robot face stays in the tree for the 0.4 line)
   // The 16 px font tables (CONFIG_HG_FONT_CELL=16) already read well on the 1.28"
   // panel, so the automatic text scale 1 stays: doubling it would land at 32 px.
   // Four body lines are what the text band holds since the top band merged away;

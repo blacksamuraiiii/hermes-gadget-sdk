@@ -413,6 +413,7 @@ extern "C" void app_main(void) {
     profile.extra_settings = {"touch_cancel"};
   }
   profile.robot_face = board.robot_face;
+  profile.emoji_face = board.emoji_face;
   if (board.greeting) profile.greeting = board.greeting;
   if (hal.mic == &g_codec_mic) {
     profile.mic_rate = hgp::CodecAudio::kRate;

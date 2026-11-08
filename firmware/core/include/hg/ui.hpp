@@ -41,7 +41,7 @@ enum class Screen : uint8_t {
 
 // The face the hero shows, when the screen alone would not say it. Auto derives the
 // face from the screen and the clock; the others are a timed override or a resting face.
-enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping };
+enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Confused };
 
 enum class Link : uint8_t { Offline, Network, Connecting, Online };
 
@@ -60,7 +60,8 @@ struct UiModel {
   Screen screen = Screen::Boot;
   Link link = Link::Offline;
   // A face the state alone does not explain: happy for a moment after a wake hit, sad
-  // for a moment after a turn with no speech, sleeping after a long idle. Auto means
+  // for a moment after a turn with no speech, sleeping after a long idle, confused
+  // when a turn is not understood (no trigger sets it yet). Auto means
   // the screen decides. Kept out of mascot::Frame because sleeping is not a bitmap.
   Emote emote = Emote::Auto;
   std::string title;     // top bar (device name)
@@ -90,6 +91,9 @@ struct UiModel {
   // Draw the robot face (hg/robot_face.hpp) in the hero box instead of the mascot
   // bitmaps. A board's own artwork: the moji board has one, upstream's boards do not.
   bool robot = false;
+  // Draw the pure-emoji face (hg/emoji_face.hpp) in the hero box instead: eyes
+  // only, no head, no antenna, no text. The moji board's face on feat/moji-emoji-only.
+  bool emoji = false;
   uint8_t caption_lines = 1;  // hero: lines the detail may wrap to (then "..")
   // Wi-Fi setup: a scannable code for the temporary network, drawn centred in
   // the content band. Null on every other screen. Borrowed, not owned: the app

@@ -55,6 +55,9 @@ struct DeviceProfile {
   // The board has its own face (hg/robot_face.hpp) instead of the mascot bitmaps:
   // the hero box draws that instead. One board's artwork, not a global switch.
   bool robot_face = false;
+  // The board has its own pure-emoji face (hg/emoji_face.hpp) instead: eyes only,
+  // no head, no antenna, no text. Same idea, a different face for the same hero box.
+  bool emoji_face = false;
   // Board-specific settings the console accepts besides the core ones. Changes
   // reach the port through App::on_setting_changed.
   std::vector<std::string> extra_settings;

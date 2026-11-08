@@ -231,6 +231,7 @@ hgsim* hgsim_create(const hgsim_config* cfg, const hgsim_host* host) {
   profile.talk_label = cfg->talk_label ? cfg->talk_label : "SPACE";
   profile.cancel_label = cfg->cancel_label ? cfg->cancel_label : "ESC";
   profile.robot_face = cfg->robot_face != 0;
+  profile.emoji_face = cfg->emoji_face != 0;
   if (cfg->greeting) profile.greeting = cfg->greeting;
   if (cfg->touch) {
     profile.touch_screen = true;

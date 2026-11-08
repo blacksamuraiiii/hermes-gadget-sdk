@@ -18,6 +18,7 @@ set(HG_CORE_SOURCES
     src/protocol.cpp
     src/qr.cpp
     src/robot_face.cpp
+    src/emoji_face.cpp
     src/setup.cpp
     src/touch.cpp
     src/ui.cpp

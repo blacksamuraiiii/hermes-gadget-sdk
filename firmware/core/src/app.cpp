@@ -1659,6 +1659,7 @@ void App::update_model() {
   m.dash.clear();
   m.hero = false;
   m.robot = profile_.robot_face;
+  m.emoji = profile_.emoji_face;
   m.caption_lines = 1;
   m.scroll = scroll_;
   m.level = level_;
