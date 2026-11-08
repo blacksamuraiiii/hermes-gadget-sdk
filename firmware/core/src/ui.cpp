@@ -107,6 +107,7 @@ robot::Look robot_look(const UiModel& m) {
     case Emote::Happy: return robot::Look::Happy;
     case Emote::Sad: return robot::Look::Sad;
     case Emote::Sleeping: return robot::Look::Sleeping;
+    case Emote::Silly: break;  // the robot face has no silly look; the screen decides
     case Emote::Auto: break;
   }
   switch (m.screen) {
@@ -144,7 +145,7 @@ emoji::Look emoji_look(const UiModel& m) {
     case Emote::Happy: return emoji::Look::Happy;
     case Emote::Sad: return emoji::Look::Sad;
     case Emote::Sleeping: return emoji::Look::Sleeping;
-    case Emote::Confused: return emoji::Look::Confused;
+    case Emote::Silly: return emoji::Look::Silly;
     case Emote::Auto: break;
   }
   switch (m.screen) {
@@ -162,6 +163,18 @@ uint32_t emoji_anim_key(const UiModel& m) {
     case emoji::Look::Thinking: return static_cast<uint32_t>(look) * 16 + (m.frame / 3) % 4;
     case emoji::Look::Sleeping: return static_cast<uint32_t>(look) * 16 + (m.frame / 5) % 6;
     case emoji::Look::Connecting: return static_cast<uint32_t>(look) * 16 + (m.frame % 20);
+    case emoji::Look::Speaking:
+      return static_cast<uint32_t>(look) * 16 + (m.frame % 20) + (m.level / 10) * 64;
+    case emoji::Look::Sad:
+    case emoji::Look::Silly:
+    case emoji::Look::Laughing:
+    case emoji::Look::Loving:
+    case emoji::Look::Angry:
+    case emoji::Look::Shocked:
+    case emoji::Look::Embarrassed:
+    case emoji::Look::Winking:
+      // These animate on the GIF's 20-frame cycle, so they repaint every frame.
+      return static_cast<uint32_t>(look) * 16 + (m.frame % 20);
     default: return static_cast<uint32_t>(look) * 16 + ((m.frame % 45) < 2 ? 1u : 0u);
   }
 }
@@ -175,7 +188,7 @@ mascot::Frame mascot_frame(const UiModel& m) {
     case Emote::Happy: return mascot::Frame::Happy;
     case Emote::Sad: return mascot::Frame::Sad;
     case Emote::Sleeping: return mascot::Frame::Blink;  // closed eyes, all the time
-    case Emote::Confused: break;  // the mascot has no confused frame; the emoji face draws it
+    case Emote::Silly: break;  // the mascot has no silly frame; the emoji face draws it
     case Emote::Auto: break;
   }
   return m.frame % 45 < 2 ? mascot::Frame::Blink : mascot::Frame::Idle;  // blink every ~4.5 s

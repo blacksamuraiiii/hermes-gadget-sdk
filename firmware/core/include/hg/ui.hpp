@@ -41,7 +41,7 @@ enum class Screen : uint8_t {
 
 // The face the hero shows, when the screen alone would not say it. Auto derives the
 // face from the screen and the clock; the others are a timed override or a resting face.
-enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Confused };
+enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Silly };
 
 enum class Link : uint8_t { Offline, Network, Connecting, Online };
 
@@ -60,7 +60,7 @@ struct UiModel {
   Screen screen = Screen::Boot;
   Link link = Link::Offline;
   // A face the state alone does not explain: happy for a moment after a wake hit, sad
-  // for a moment after a turn with no speech, sleeping after a long idle, confused
+  // for a moment after a turn with no speech, sleeping after a long idle, silly
   // when a turn is not understood (no trigger sets it yet). Auto means
   // the screen decides. Kept out of mascot::Frame because sleeping is not a bitmap.
   Emote emote = Emote::Auto;
