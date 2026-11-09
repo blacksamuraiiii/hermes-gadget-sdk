@@ -45,6 +45,7 @@ class Board:
     no_top_band: bool = False
     body_rows_cap: int = 0
     robot_face: bool = False
+    emoji_face: bool = False
     greeting: str | None = None
 
 
@@ -71,7 +72,7 @@ BOARDS = {
     "sim-moji": Board("sim-moji", 240, 240, scroll_buttons=False, round=True, touch=False,
                        round_area_permille=860, no_bottom_bar=True, body_rows_cap=4,
                        no_top_band=True,
-                       robot_face=True, greeting="Hi, I'm Moji"),
+                       emoji_face=True, greeting="Hi, I'm Moji"),
     # A 1.8" rectangular 368x448 AMOLED touch board (e.g. ESP32-S3-Touch-AMOLED-1.8): no scroll buttons.
     "sim-368x448": Board("sim-368x448", 368, 448, scroll_buttons=False, touch=True),
     # The 2.06" 410x502 AMOLED watch (ESP32-S3-Touch-AMOLED-2.06), as the firmware draws it:
@@ -198,7 +199,8 @@ class Simulator:
             update_pending=update_pending, power=True,
             round_area_permille=b.round_area_permille, no_bottom_bar=b.no_bottom_bar,
             no_top_band=b.no_top_band,
-            body_rows_cap=b.body_rows_cap, robot_face=b.robot_face, greeting=b.greeting)
+            body_rows_cap=b.body_rows_cap, robot_face=b.robot_face, emoji_face=b.emoji_face,
+            greeting=b.greeting)
         self._round_spans = _circle_spans(b.width, b.height) if b.round else None
         self._register_actions()
 

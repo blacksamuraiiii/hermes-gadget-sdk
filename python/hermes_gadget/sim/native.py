@@ -20,7 +20,7 @@ from .. import paths
 
 log = logging.getLogger("hermes_gadget.sim")
 
-ABI_VERSION = 6
+ABI_VERSION = 7
 
 BUTTON_TALK, BUTTON_CANCEL, BUTTON_UP, BUTTON_DOWN = 0, 1, 2, 3
 BUTTONS = {"talk": BUTTON_TALK, "cancel": BUTTON_CANCEL, "up": BUTTON_UP, "down": BUTTON_DOWN}
@@ -104,6 +104,7 @@ class _Config(Structure):
         ("no_top_band", c_int),
         ("body_rows_cap", c_int),
         ("robot_face", c_int),
+        ("emoji_face", c_int),
         ("greeting", c_char_p),
     ]
 
@@ -218,7 +219,8 @@ class NativeDevice:
                  audio_host: AudioHost | None = None, power: bool = False,
                  round_area_permille: int = 0, no_bottom_bar: bool = False, body_rows_cap: int = 0,
                  no_top_band: bool = False,
-                 robot_face: bool = False, greeting: str | None = None):
+                 robot_face: bool = False, emoji_face: bool = False,
+                 greeting: str | None = None):
         self._lib = load_library(library)
         self._host_obj = host
         self.width, self.height = width, height
@@ -230,7 +232,7 @@ class NativeDevice:
                                update_capacity, int(update_pending), int(power),
                                int(round_area_permille), int(no_bottom_bar), int(no_top_band),
                                int(body_rows_cap),
-                               int(robot_face), greeting_raw)
+                               int(robot_face), int(emoji_face), greeting_raw)
         self._callbacks = self._make_callbacks(host, audio_host or host)
         self._handle = self._lib.hgsim_create(ctypes.byref(self._config), ctypes.byref(self._callbacks))
         if not self._handle:

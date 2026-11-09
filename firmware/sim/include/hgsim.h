@@ -22,7 +22,7 @@ extern "C" {
 #define HGSIM_API __attribute__((visibility("default")))
 #endif
 
-#define HGSIM_ABI_VERSION 6
+#define HGSIM_ABI_VERSION 7
 
 typedef struct hgsim hgsim;
 

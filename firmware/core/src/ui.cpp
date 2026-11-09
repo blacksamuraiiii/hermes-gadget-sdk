@@ -707,6 +707,9 @@ void Ui::draw_header(Canvas& c, const UiModel& m) {
   const int y0 = layout_.top_h;
   const int hh = layout_.header_h;
   c.fill_rect(0, y0, info_.width, hh, bg_);
+  // The pure-emoji board has no text: the face is the whole screen. The band is
+  // still cleared first, so a text frame before it leaves no headline behind.
+  if (m.emoji) return;
   int r = hh / 2 - 2 * s;
   int cx = 4 * s + r;
   int cy = y0 + hh / 2;
@@ -904,8 +907,10 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   const int cols = layout_.hero_cols;
   if (!m.detail.empty()) g.detail = wrap_text(m.detail, cols);
   // A board drawing its own face shows one caption line: the state. The detail line
-  // (a status phrase) is what the face itself now says.
-  if (m.robot) g.detail.clear();
+  // (a status phrase) is what the face itself now says. The pure-emoji branch shows
+  // no text at all, so it takes neither the line nor the space it would hold.
+  const bool own_face = m.robot || m.emoji;
+  if (own_face) g.detail.clear();
   const int buttons_h = m.yes.empty() && m.no.empty() ? 0 : lh + 6 * s;
   auto caption_h = [&](int lines) { return (1 + lines) * lh + s; };
   // Never shrink the mascot below the smallest bitmap: drop caption lines instead.
@@ -922,7 +927,7 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   // Reserve one detail line even when there is none, so the mascot keeps its size.
   // A board with its own face takes the line back: nothing to draw, nothing to reserve.
   const int lines = static_cast<int>(g.detail.size());
-  const int ch = caption_h(m.robot ? std::max(0, lines) : std::max<int>(1, lines));
+  const int ch = caption_h(own_face ? std::max(0, lines) : std::max<int>(1, lines));
   // A board with its own face leaves out the bottom bar, so the face and its caption
   // get the whole area; the caption also sits a little further down.
   const int main_h = m.robot ? (panel_.no_top_band ? info_.height : info_.height - layout_.top_h)
@@ -1075,14 +1080,17 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
     c.text(tx, ty, "Z", zs, kText);
   }
 
-  // Caption: headline, then the detail lines, centred.
-  const int cols = layout_.hero_cols;
-  std::string head = fit(m.headline, cols);
-  int cy = g.caption_y;
-  c.text((w - Canvas::text_width(head, s)) / 2, cy, head, s, caption_color(m.screen));
-  for (const auto& line : g.detail) {
-    cy += lh;
-    c.text((w - Canvas::text_width(line, s)) / 2, cy, line, s, kDim);
+  // Caption: headline, then the detail lines, centred. The pure-emoji branch draws
+  // no caption at all — the face is the whole screen (2026-11-09 用户拍板：跳过 header)。
+  if (!m.emoji) {
+    const int cols = layout_.hero_cols;
+    std::string head = fit(m.headline, cols);
+    int cy = g.caption_y;
+    c.text((w - Canvas::text_width(head, s)) / 2, cy, head, s, caption_color(m.screen));
+    for (const auto& line : g.detail) {
+      cy += lh;
+      c.text((w - Canvas::text_width(line, s)) / 2, cy, line, s, kDim);
+    }
   }
 
   // Answer buttons (Prompt screen): TALK on the left, CANCEL on the right.

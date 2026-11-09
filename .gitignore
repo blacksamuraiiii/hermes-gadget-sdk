@@ -10,6 +10,7 @@ build/
 
 # Host (CMake) builds
 /build/
+/build-*/
 
 # Installer site
 site/node_modules/
@@ -19,6 +20,7 @@ site/playwright-report/
 
 # ESP-IDF / PlatformIO outputs
 firmware/esp32/build/
+firmware/esp32/build-*/
 firmware/esp32/.pio/
 firmware/esp32/managed_components/
 firmware/esp32/dependencies.lock
@@ -41,7 +43,6 @@ tools/*.log
 # Release images live in GitHub Releases, not in git: a 1.4 MB image per version
 # in history is what this rule exists to stop. Keep README.md and SHA256SUMS here.
 firmware/releases/*/*.bin
-/build-host/
 
-# Local simulator build tree (CMake cache, .o, libhgsim.so)
-/build-sim-moji/
+# Local reference material (datasheets, vendor drops), not part of the project.
+refs/
