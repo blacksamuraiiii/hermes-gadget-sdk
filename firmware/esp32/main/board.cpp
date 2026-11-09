@@ -773,7 +773,9 @@ BoardConfig make() {
   b.lcd.body_rows_cap = 4;
   // The 1.28" glass runs to the bezel: an inscribed square (70%) threw away a ring of
   // usable pixels, so the face sat small in the middle and the text bands were short.
-  b.lcd.round_area_permille = 860;
+  // The pure-emoji build has no text to keep off the round corners, so the face uses
+  // the whole glass: 1000 = the full 240 px circle (the text line kept 860).
+  b.lcd.round_area_permille = 1000;
   b.lcd.no_bottom_bar = true;  // one BOOT key: no hint row, the text gets the rows
   b.lcd.no_top_band = true;    // no touch: the settings hold target has no owner, the header line starts at the top
   b.greeting = "Hi, I'm Moji";  // the idle screen greets under the face

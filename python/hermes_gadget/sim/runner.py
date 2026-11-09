@@ -70,7 +70,7 @@ BOARDS = {
     # Noto/Montserrat font and a thin bezel (86% of the panel). Screenshots from this
     # board match the glass, so layout questions are answered here, not on the desk.
     "sim-moji": Board("sim-moji", 240, 240, scroll_buttons=False, round=True, touch=False,
-                       round_area_permille=860, no_bottom_bar=True, body_rows_cap=4,
+                       round_area_permille=1000, no_bottom_bar=True, body_rows_cap=4,
                        no_top_band=True,
                        emoji_face=True, greeting="Hi, I'm Moji"),
     # A 1.8" rectangular 368x448 AMOLED touch board (e.g. ESP32-S3-Touch-AMOLED-1.8): no scroll buttons.

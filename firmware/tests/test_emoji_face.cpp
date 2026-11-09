@@ -166,12 +166,13 @@ TEST("emoji face: silly has a question mark") {
 // The neutral baseline below uses frame 0: the idle glance shifts the eyes sideways
 // on other frames, so "this area is empty" only holds where the glance is centred.
 TEST("emoji face: sleeping has U eyes and a T mouth, not bars") {
-  // The U eyes are bottom-half arcs at design (72, 86) and (145, 86), r=22:
-  // canvas y for the arc bottom (design y~108) is 15+0.75*108 = 96. The old
-  // bars were horizontal bars at design y=128 (canvas y 111).
+  // The U eyes are bottom-half arcs at design (72, 78) and (145, 78), r=24 w=8:
+  // the ring reaches y 98..106 in design, which is canvas y 15+0.75*98 .. 15+0.75*106
+  // = 88.5..94.5. The T mouth now sits at design 142 (the GIF's 9 px gap was a
+  // quarter of the eyes' height on the 240 px glass; opened to 24).
   const Frame sleeping = render(hg::emoji::Look::Sleeping);
-  // Ink at the U bottom (canvas x~84, y~96) and none where the old bar was.
-  CHECK(pixel(sleeping, 84, 96) == kInk);
+  // Ink at the U bottom (canvas x~84 = design x 72, y~94) and none where the old bar was.
+  CHECK(pixel(sleeping, 84, 94) == kInk);
   CHECK(count_rect(sleeping, kInk, 57, 111, 63, 117) == 0);
   // The T mouth bar is design (85-150, 134), w=25. Between the two oval
   // eyes (canvas x gap 103-120) the bar is the only ink: canvas x 106-117,
@@ -262,3 +263,36 @@ TEST("emoji face: hi grows its eyes then flashes rays, with no text") {
 // Phase 2 moods (Laughing, Loving, Winking, Angry, Shocked, Embarrassed,
 // Silly) are now drawn instead of falling back to Neutral — the "differs from
 // neutral" test above pins that. Surprised is gone too: shocked covers it.
+
+// The face has to fill the glass, not sit in a corner of it: every look must cover a fair
+// share of the 240 px frame and stay inside the panel. A mood drawn for a 100 px GIF and
+// scaled without looking shows up here as a small box.
+TEST("emoji face: every look fills the glass and stays inside it") {
+  const hg::emoji::Look all[] = {
+      hg::emoji::Look::Neutral, hg::emoji::Look::Happy, hg::emoji::Look::Sad,
+      hg::emoji::Look::Thinking, hg::emoji::Look::Sleeping, hg::emoji::Look::Listening,
+      hg::emoji::Look::Speaking, hg::emoji::Look::Silly, hg::emoji::Look::Laughing,
+      hg::emoji::Look::Loving, hg::emoji::Look::Angry, hg::emoji::Look::Shocked,
+      hg::emoji::Look::Embarrassed, hg::emoji::Look::Winking, hg::emoji::Look::Excited,
+      hg::emoji::Look::Bored, hg::emoji::Look::Cool, hg::emoji::Look::Hi,
+      hg::emoji::Look::Connecting, hg::emoji::Look::Disconnected};
+  for (hg::emoji::Look look : all) {
+    const Frame fb = render(look, 14);
+    int x0 = kCanvas, x1 = -1, y0 = kCanvas, y1 = -1;
+    for (int y = 0; y < kCanvas; ++y) {
+      for (int x = 0; x < kCanvas; ++x) {
+        const uint16_t px = fb[static_cast<size_t>(y) * kCanvas + x];
+        if (px == kBg) continue;
+        x0 = std::min(x0, x); x1 = std::max(x1, x);
+        y0 = std::min(y0, y); y1 = std::max(y1, y);
+      }
+    }
+    const int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    // Measured over the 20 looks (frame 14, the 150 px test box): w 76..143, h 33..114.
+    // Floor of 70 and 30 keeps a look from collapsing into a few pixels — that is the
+    // failure mode "the GIF was drawn for a 100 px sheet" produced.
+    CHECK(w >= 70);
+    CHECK(h >= 30);
+    CHECK(x0 >= 0 && y0 >= 0 && x1 < kCanvas && y1 < kCanvas);
+  }
+}

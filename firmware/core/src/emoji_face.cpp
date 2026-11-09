@@ -132,12 +132,15 @@ void draw_happy_maracas(Pen& p, uint32_t frame) {
 // The U eyes are bottom-half arcs; the T mouth is a horizontal bar (thick
 // line) with a stem below it, left of centre.
 void draw_sleeping(Pen& p, uint32_t frame) {
-  // U eyes: bottom-half arcs, top at y=86, r=22.
-  p.arc(72, 86, 22, 8, 0, 180, p.ink());
-  p.arc(145, 86, 22, 8, 0, 180, p.ink());
-  // T mouth: bar from (85, 134) to (150, 134), width 25; stem at x=82-94.
-  p.line(85, 134, 150, 134, 25, p.ink());
-  p.solid_round(82, 147, 12, 16, 6, p.ink());
+  // U eyes: bottom-half arcs, top at y=78, r=24. The first pass had them at 86/22 with the
+  // T mouth at 134 — nine pixels of gap, which reads as a cramped face on the 240 px glass
+  // (the GIF is drawn at 100 px). Eyes up, mouth down: the gap is 24 now, and the whole
+  // face runs y 74..170 like the neutral pair does.
+  p.arc(72, 78, 24, 8, 0, 180, p.ink());
+  p.arc(145, 78, 24, 8, 0, 180, p.ink());
+  // T mouth: bar from (85, 142) to (150, 142), width 23; stem at x=82-94.
+  p.line(85, 142, 150, 142, 23, p.ink());
+  p.solid_round(82, 154, 12, 16, 6, p.ink());
   // "z": visible only frames 13-15, matching the GIF's brief appearance.
   const uint32_t f = gif_frame(frame);
   if (f >= 13 && f < 16) draw_zed(p, 197, 111, 20, kZz);
@@ -242,7 +245,11 @@ void draw_speaking_bars(Pen& p, uint32_t frame, uint8_t level) {
   for (int i = 0; i < 6; ++i) {
     const float pulse = 0.6f + 0.4f * std::sin(phase + i * 1.1f);
     float h;
-    if (level == 0) {
+    // The board plays back on its own speaker while this shows: one mic, no AEC, so the
+    // level her own playback leaves behind (or the level a closed mic never updates)
+    // squashed the six bars into five little points. Below 40 % ride the GIF wave,
+    // above that the microphone really is busy.
+    if (level < 40) {
       h = 52.0f * kBase[i] * pulse;
     } else {
       // Louder mic -> taller bars, with a smaller dance on top.
@@ -266,7 +273,9 @@ void draw_laughing(Pen& p, uint32_t frame) {
 // Loving: two big heart eyes, s=20, gentle pulse + bob.
 void draw_loving(Pen& p, uint32_t frame) {
   const float phase = gif_phase(frame);
-  const float s = 20.0f * (1.0f + 0.08f * std::sin(phase));
+  // The GIF's s=20 was drawn on a 100 px sheet; at this frame the heart sat a fifth of
+  // the glass tall and read as a spark. 30 puts the hearts on par with the oval eyes.
+  const float s = 30.0f * (1.0f + 0.08f * std::sin(phase));
   const float bob = 4.0f * std::cos(phase);
   draw_heart_eye(p, 72, 112 + bob, s, kPink);
   draw_heart_eye(p, 145, 112 + bob, s, kPink);
