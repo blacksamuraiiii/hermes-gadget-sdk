@@ -1100,7 +1100,14 @@ void App::on_wake_hit(int command_id, float score) {
                           std::to_string(static_cast<int>(score * 100.0f + 0.5f)) + " percent");
   const uint32_t t = now();
   if (wake_hit_at_ && t - wake_hit_at_ < kWakeHitThrottleMs) return;  // the same word, still firing
-  if (!can_talk() || settings_open() || prompt_showing() || mode_ != Mode::Idle) return;
+  if (!can_talk() || settings_open() || prompt_showing() || mode_ != Mode::Idle) {
+    // A hit that never becomes a turn is invisible from the outside: say why.
+    log(LogLevel::Info, "wake: hit ignored (can_talk " + std::string(can_talk() ? "y" : "n") +
+                            ", settings " + std::string(settings_open() ? "y" : "n") +
+                            ", prompt " + std::string(prompt_showing() ? "y" : "n") +
+                            ", mode " + std::to_string(static_cast<int>(mode_)) + ")");
+    return;
+  }
   wake_hit_at_ = t;
   // Tell the host which word fired and how sure the model was; it answers with the cue.
   json::Value msg = json::Value::object();
