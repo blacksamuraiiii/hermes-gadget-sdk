@@ -51,6 +51,10 @@ constexpr uint32_t kFrameMs = 100;
 // How long the two timed faces stay up, and how long an idle screen waits before she sleeps.
 constexpr uint32_t kEmoteMs = 3000;
 constexpr uint32_t kSleepingAfterMs = 120000;
+// The pure-emoji board's resting face changes while nothing happens: sunglasses at 40 s,
+// maracas at 75 s, asleep at 2 min. A text board skips these — it has words on screen.
+constexpr uint32_t kCoolAfterMs = 40000;
+constexpr uint32_t kHappyAfterMs = 75000;
 constexpr uint32_t kSensorIntervalMs = 2000;
 constexpr uint32_t kDefaultCardMs = 15000;
 constexpr int kDashboardVersion = 1;    // the dashboard message this firmware draws
@@ -1917,8 +1921,18 @@ void App::update_model() {
   const uint32_t t = now();
   if (emote_until_ != 0 && static_cast<int32_t>(emote_until_ - t) > 0) {
     m.emote = emote_;
-  } else if (m.screen == Screen::Ready && m.hero && !display_sleeping_ && t - idle_since_ >= kSleepingAfterMs) {
-    m.emote = Emote::Sleeping;
+  } else if (m.screen == Screen::Ready && m.hero && !display_sleeping_) {
+    // Nothing is happening: let the resting face drift instead of staring. The emoji
+    // board goes idle glance → sunglasses → maracas → asleep; a text board keeps the
+    // single sleeping face it always had.
+    const uint32_t idle = t - idle_since_;
+    if (idle >= kSleepingAfterMs) {
+      m.emote = Emote::Sleeping;
+    } else if (m.emoji && idle >= kHappyAfterMs) {
+      m.emote = Emote::Happy;
+    } else if (m.emoji && idle >= kCoolAfterMs) {
+      m.emote = Emote::Cool;
+    }
   }
   if (!display_sleeping_) render(m);
 }

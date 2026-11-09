@@ -53,10 +53,24 @@ float gif_phase(uint32_t frame) {
   return 2.0f * kPi * static_cast<float>(gif_frame(frame)) / 20.0f;
 }
 
-// The one base eye every state face shares (v8, user-picked oval).
-void draw_base_eyes(Pen& p, float cy = 112.0f) {
-  p.fill_ellipse(72, cy, 25, 50, p.ink());
-  p.fill_ellipse(145, cy, 25, 50, p.ink());
+// The one base eye every state face shares (v8, user-picked oval). `dx` shifts the pair
+// sideways for the idle glance: the eyes look around instead of staring.
+void draw_base_eyes(Pen& p, float cy = 112.0f, float dx = 0.0f) {
+  p.fill_ellipse(72 + dx, cy, 25, 50, p.ink());
+  p.fill_ellipse(145 + dx, cy, 25, 50, p.ink());
+}
+
+// The idle glance, one 40-frame cycle (4 s at 10 fps): look left, hold, come back,
+// look right, hold, come back. The GIF's neutral face does this; a still pair of eyes
+// on a desk reads as a frozen screen.
+float idle_dx(uint32_t frame) {
+  const uint32_t c = frame % 40;
+  if (c < 10) return -7.0f * (static_cast<float>(c) / 10.0f);
+  if (c < 16) return -7.0f;
+  if (c < 20) return -7.0f * (1.0f - static_cast<float>(c - 16) / 4.0f);
+  if (c < 30) return 7.0f * (static_cast<float>(c - 20) / 10.0f);
+  if (c < 36) return 7.0f;
+  return 7.0f * (1.0f - static_cast<float>(c - 36) / 4.0f);
 }
 
 // Closed eyes: the blink, and the shape a sleeping face keeps.
@@ -144,12 +158,6 @@ void draw_question(Pen& p) {
 
 // The connecting ring: a 300 deg arc with a 60 deg gap, turning about the face
 // (one turn every 2 s at 18 deg per 100 ms frame), the universal loading sign.
-void draw_ring(Pen& p, uint32_t frame) {
-  const int rot = static_cast<int>((frame * 18) % 360);
-  p.arc(120, 118, 88, 5, static_cast<float>((300 + rot) % 360),
-        static_cast<float>((240 + rot) % 360), kRingYellow);
-}
-
 // ---- GIF-ported mood geometry (gen.py) ----------------------------------
 
 // A wavy mouth: a sine-wave polyline, w wide, centred at (cx, cy).
@@ -483,14 +491,16 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
                      look != Look::Bored && look != Look::Cool && look != Look::Hi && (frame % 45) < 2;
 
   switch (look) {
-    case Look::Neutral:
+    case Look::Neutral: {
+      const float dx = idle_dx(frame);
       if (blink) {
-        draw_bar(p, 72, 112);
-        draw_bar(p, 145, 112);
+        draw_bar(p, 72 + dx, 112);
+        draw_bar(p, 145 + dx, 112);
       } else {
-        draw_base_eyes(p);
+        draw_base_eyes(p, 112.0f, dx);
       }
       break;
+    }
     case Look::Listening:
       if (blink) {
         draw_bar(p, 72, 112);
@@ -599,7 +609,8 @@ void draw(Canvas& c, int x, int y, int size, Look look, uint32_t frame, uint8_t 
       } else {
         draw_base_eyes(p);
       }
-      draw_ring(p, frame);
+      // The spinner is not part of the face: it hugs the glass, so Ui::draw_hero draws
+      // it in the panel's own frame (a ring that scales with the face sits too far in).
       break;
     case Look::Disconnected:  // XX eyes: the robot face's sign for "broken / offline"
       p.line(72 - 22, 96, 72 + 22, 140, 10, p.ink());

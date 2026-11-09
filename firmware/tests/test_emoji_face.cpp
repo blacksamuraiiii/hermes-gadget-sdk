@@ -62,8 +62,9 @@ TEST("emoji face: every state look draws a face, and each one differs from neutr
                                     hg::emoji::Look::Shocked, hg::emoji::Look::Embarrassed,
                                     hg::emoji::Look::Winking, hg::emoji::Look::Excited,
                                     hg::emoji::Look::Bored, hg::emoji::Look::Cool,
-                                    hg::emoji::Look::Hi, hg::emoji::Look::Connecting,
-                                    hg::emoji::Look::Disconnected};
+                                    hg::emoji::Look::Hi, hg::emoji::Look::Disconnected};
+  // Connecting is deliberately absent: it draws the neutral face and leaves the spinner
+  // to Ui::draw_hero, which draws it in the panel's own frame so it hugs the glass.
   for (hg::emoji::Look look : others) {
     const Frame fb = render(look);
     CHECK(differences(neutral, fb) > 40);  // a look that changes fewer pixels is invisible
@@ -85,7 +86,9 @@ TEST("emoji face: the looks carry their own colours") {
   // Listening arcs breathe: at frame 5 the inner arc is at full brightness.
   CHECK(count(render(hg::emoji::Look::Listening, 5), wave) > 20); // the inner arc
   CHECK(count(render(hg::emoji::Look::Speaking), wave) > 20);     // the waveform
-  CHECK(count(render(hg::emoji::Look::Connecting), ring) > 100);  // the yellow ring
+  // The spinner belongs to the glass, not the face: Ui::draw_hero draws it on the
+  // panel edge, so the face itself carries no ring pixels (notes/设计-小墨纯表情.md §6).
+  CHECK(count(render(hg::emoji::Look::Connecting), ring) == 0);
   // Sleeping's single "z" appears only frames 13-15 of the 20-frame cycle.
   CHECK(count(render(hg::emoji::Look::Sleeping, 14), zz) > 20);   // the "z"
   CHECK(count(render(hg::emoji::Look::Sleeping, 10), zz) == 0);   // ...not at frame 10
@@ -160,6 +163,8 @@ TEST("emoji face: silly has a question mark") {
   CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 184, 36, 198, 59) == 0);
 }
 
+// The neutral baseline below uses frame 0: the idle glance shifts the eyes sideways
+// on other frames, so "this area is empty" only holds where the glance is centred.
 TEST("emoji face: sleeping has U eyes and a T mouth, not bars") {
   // The U eyes are bottom-half arcs at design (72, 86) and (145, 86), r=22:
   // canvas y for the arc bottom (design y~108) is 15+0.75*108 = 96. The old
@@ -172,7 +177,7 @@ TEST("emoji face: sleeping has U eyes and a T mouth, not bars") {
   // eyes (canvas x gap 103-120) the bar is the only ink: canvas x 106-117,
   // y 112-122.
   CHECK(count_rect(sleeping, kInk, 106, 112, 117, 122) > 10);
-  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 106, 112, 117, 122) == 0);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral, 0), kInk, 106, 112, 117, 122) == 0);
 }
 
 TEST("emoji face: happy has maracas and no heart") {
@@ -247,7 +252,7 @@ TEST("emoji face: hi grows its eyes then flashes rays, with no text") {
   // y 99. Neutral has nothing there.
   const Frame hi_rays = render(hg::emoji::Look::Hi, 10);
   CHECK(count_rect(hi_rays, kInk, 51, 98, 61, 101) > 5);
-  CHECK(count_rect(render(hg::emoji::Look::Neutral), kInk, 51, 98, 61, 101) == 0);
+  CHECK(count_rect(render(hg::emoji::Look::Neutral, 0), kInk, 51, 98, 61, 101) == 0);
   // No rays at frame 0 (the pulses are centred at f=10 and f=16).
   CHECK(count_rect(render(hg::emoji::Look::Hi, 0), kInk, 51, 98, 61, 101) == 0);
 }

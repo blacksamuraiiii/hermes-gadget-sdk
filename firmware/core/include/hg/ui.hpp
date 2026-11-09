@@ -41,7 +41,7 @@ enum class Screen : uint8_t {
 
 // The face the hero shows, when the screen alone would not say it. Auto derives the
 // face from the screen and the clock; the others are a timed override or a resting face.
-enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Silly };
+enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Silly, Cool };
 
 // Something the user has to act on, or a task that just finished. The host says which
 // (the prompt's and the card's `kind`); a pure-emoji board turns it into a face, a

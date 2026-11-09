@@ -2,6 +2,7 @@
 
 #include "hg/robot_face.hpp"
 #include "hg/emoji_face.hpp"
+#include "hg/face_pen.hpp"
 
 #include <cstdio>
 
@@ -26,6 +27,7 @@ constexpr uint16_t kGreen = rgb565(61, 214, 140);
 constexpr uint16_t kBlue = rgb565(90, 169, 242);
 constexpr uint16_t kRed = rgb565(242, 95, 92);
 constexpr uint16_t kYellow = rgb565(242, 201, 76);
+constexpr uint16_t kRing = rgb565(255, 205, 0);  // the emoji face's connecting spinner
 constexpr uint16_t kGreenDim = rgb565(28, 92, 62);
 constexpr uint16_t kBlueDim = rgb565(52, 96, 140);
 constexpr uint16_t kAccentDim = rgb565(110, 82, 30);
@@ -107,7 +109,8 @@ robot::Look robot_look(const UiModel& m) {
     case Emote::Happy: return robot::Look::Happy;
     case Emote::Sad: return robot::Look::Sad;
     case Emote::Sleeping: return robot::Look::Sleeping;
-    case Emote::Silly: break;  // the robot face has no silly look; the screen decides
+    case Emote::Silly:  // the robot face has no silly/cool look; the screen decides
+    case Emote::Cool: break;
     case Emote::Auto: break;
   }
   switch (m.screen) {
@@ -154,6 +157,7 @@ emoji::Look emoji_look(const UiModel& m) {
     case Emote::Sad: return emoji::Look::Sad;
     case Emote::Sleeping: return emoji::Look::Sleeping;
     case Emote::Silly: return emoji::Look::Silly;
+    case Emote::Cool: return emoji::Look::Cool;
     case Emote::Auto: break;
   }
   switch (m.screen) {
@@ -168,12 +172,15 @@ emoji::Look emoji_look(const UiModel& m) {
 uint32_t emoji_anim_key(const UiModel& m) {
   const emoji::Look look = emoji_look(m);
   switch (look) {
+    case emoji::Look::Neutral:  // the idle glance runs on its own 40-frame cycle
+      return static_cast<uint32_t>(look) * 16 + (m.frame % 40);
     case emoji::Look::Thinking: return static_cast<uint32_t>(look) * 16 + (m.frame / 3) % 4;
     case emoji::Look::Sleeping: return static_cast<uint32_t>(look) * 16 + (m.frame / 5) % 6;
     case emoji::Look::Connecting: return static_cast<uint32_t>(look) * 16 + (m.frame % 20);
     case emoji::Look::Speaking:
       return static_cast<uint32_t>(look) * 16 + (m.frame % 20) + (m.level / 10) * 64;
     case emoji::Look::Sad:
+    case emoji::Look::Cool:    // the sunglasses sway
     case emoji::Look::Happy:   // shaking maracas
     case emoji::Look::Silly:
     case emoji::Look::Laughing:
@@ -197,7 +204,8 @@ mascot::Frame mascot_frame(const UiModel& m) {
     case Emote::Happy: return mascot::Frame::Happy;
     case Emote::Sad: return mascot::Frame::Sad;
     case Emote::Sleeping: return mascot::Frame::Blink;  // closed eyes, all the time
-    case Emote::Silly: break;  // the mascot has no silly frame; the emoji face draws it
+    case Emote::Silly:  // the mascot has no silly/cool frame; the emoji face draws them
+    case Emote::Cool: break;
     case Emote::Auto: break;
   }
   return m.frame % 45 < 2 ? mascot::Frame::Blink : mascot::Frame::Idle;  // blink every ~4.5 s
@@ -1031,7 +1039,18 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
   if (m.emoji) {
     // The board's pure-emoji face: eyes only, no head, no antenna, no text.
     // The link state is the face itself, so there is no lamp to pass.
-    emoji::draw(c, mx, my, size, emoji_look(m), m.frame, m.level, kText, bg_);
+    const emoji::Look look = emoji_look(m);
+    emoji::draw(c, mx, my, size, look, m.frame, m.level, kText, bg_);
+    if (look == emoji::Look::Connecting) {
+      // The spinner hugs the glass instead of the face: drawn in the panel's own
+      // frame, so it sits on the edge whatever size the face is given.
+      const int box = std::min(w, y1 - y0);
+      const int rbox = box - 6;  // a hair inside the arc, so the row clips it cleanly
+      FacePen ring(c, (w - rbox) / 2, y0 + (y1 - y0 - rbox) / 2, rbox, kRing, bg_);
+      const int rot = static_cast<int>((m.frame * 18) % 360);
+      ring.arc(120, 120, 113, 12, static_cast<float>((300 + rot) % 360),
+               static_cast<float>((240 + rot) % 360), kRing);
+    }
   } else if (m.robot) {
     // The board's own face: her shell, eyes and mood extras, all from primitives.
     // Her antenna ball is the board's link lamp: green on line, yellow while
