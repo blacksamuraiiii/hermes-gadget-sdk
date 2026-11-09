@@ -138,14 +138,16 @@ uint32_t robot_anim_key(const UiModel& m) {
 // and only an online link shows the state faces. Then the timed emote, then
 // the screen — the same order as robot_look.
 emoji::Look emoji_look(const UiModel& m) {
-  // What the host asked for wins: it came from the content of the turn.
-  if (m.look_set) return m.look;
+  // The order is the promise: what the board knows beats what the host guessed.
+  // link -> her own playback -> a blocking reminder -> the AI's named face -> the rest.
   switch (m.link) {
     case Link::Connecting:
     case Link::Network: return emoji::Look::Connecting;
     case Link::Offline: return emoji::Look::Disconnected;
     case Link::Online: break;
   }
+  // The mouth has to match the sound: a named face waits for the playback to end.
+  if (m.screen == Screen::Responding && m.speaking) return emoji::Look::Speaking;
   // A reminder speaks before the resting face does: the user has to act on it, and on
   // a pure-emoji board this face is the only sign that anything happened.
   switch (m.notice) {
@@ -154,6 +156,8 @@ emoji::Look emoji_look(const UiModel& m) {
     case Notice::Done: return emoji::Look::Happy;       // maracas — the task finished
     case Notice::None: break;
   }
+  // What the host named for this turn (the AI's read on the answer).
+  if (m.look_set) return m.look;
   switch (m.emote) {
     case Emote::Happy: return emoji::Look::Happy;
     case Emote::Sad: return emoji::Look::Sad;

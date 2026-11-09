@@ -243,19 +243,12 @@ void draw_speaking_bars(Pen& p, uint32_t frame, uint8_t level) {
   constexpr float kXs[6] = {88, 101, 114, 127, 140, 153};
   const float phase = gif_phase(frame);
   for (int i = 0; i < 6; ++i) {
+    // Fixed GIF animation, no microphone: the board plays on its own speaker with one
+    // mic and no AEC, so a "real" level is either her own voice or a stale reading, and
+    // either way it squashed the bars. The 20-frame wave is what the artwork intends.
+    (void)level;
     const float pulse = 0.6f + 0.4f * std::sin(phase + i * 1.1f);
-    float h;
-    // The board plays back on its own speaker while this shows: one mic, no AEC, so the
-    // level her own playback leaves behind (or the level a closed mic never updates)
-    // squashed the six bars into five little points. Below 40 % ride the GIF wave,
-    // above that the microphone really is busy.
-    if (level < 40) {
-      h = 52.0f * kBase[i] * pulse;
-    } else {
-      // Louder mic -> taller bars, with a smaller dance on top.
-      h = 52.0f * kBase[i] * (static_cast<float>(level) / 100.0f) *
-          (0.85f + 0.15f * std::sin(phase + i * 1.1f));
-    }
+    const float h = 52.0f * kBase[i] * pulse;
     const float hh = std::max(5.0f, h);
     p.solid_round(kXs[i] - 3, 194 - hh / 2, 6, hh, 3, kWave);
   }

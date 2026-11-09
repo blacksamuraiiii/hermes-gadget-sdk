@@ -226,6 +226,7 @@ class DeviceSession:
         self.firmware: str = str(hello.get("firmware") or "")[:32]
         caps = hello.get("caps")
         self.caps: dict = caps if isinstance(caps, dict) else {}
+
         self.actions: list[dict] = [
             a for a in (hello.get("actions") or [])
             if isinstance(a, dict) and isinstance(a.get("name"), str) and a["name"]
@@ -255,6 +256,11 @@ class DeviceSession:
     def display(self) -> dict:
         d = self.caps.get("display")
         return d if isinstance(d, dict) else {}
+
+    @property
+    def face(self) -> str:
+        """``"emoji"`` for a pure-emoji build (no text at all), else robot/mascot/unknown."""
+        return str(self.caps.get("face") or "")
 
     @property
     def has_speaker(self) -> bool:

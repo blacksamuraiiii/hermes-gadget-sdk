@@ -427,6 +427,15 @@ class App {
   // A face the host named in an `emote` message (the AI's read on the turn).
   emoji::Look named_look_ = emoji::Look::Neutral;
   uint32_t named_look_until_ = 0;
+  // A named face that arrived mid-playback: it waits, so the mouth matches the sound.
+  emoji::Look pending_look_ = emoji::Look::Neutral;
+  uint32_t pending_look_ms_ = 0;
+  bool has_pending_look_ = false;
+  // The resting rotation: a new face every kIdleLookMs, picked at random.
+  emoji::Look idle_look_ = emoji::Look::Neutral;
+  uint32_t idle_look_at_ = 0;
+  bool idle_look_set_ = false;
+  emoji::Look pick_idle_look();
   uint32_t overlay_until_ = 0;  // 0 = until dismissed
   std::string card_title_, card_body_;
   int card_scroll_ = 0;

@@ -131,11 +131,13 @@ TEST("emoji face: the animated parts move, the still ones do not") {
   CHECK(differences(render(hg::emoji::Look::Hi, 2), render(hg::emoji::Look::Hi, 10)) > 5);
 }
 
-TEST("emoji face: the speaking bars follow the mic level in batch 2") {
-  // Level 0 uses the fixed GIF heights, so the same frame is deterministic.
-  CHECK(render(hg::emoji::Look::Speaking, 10, 0) == render(hg::emoji::Look::Speaking, 10, 0));
-  // A loud mic draws taller bars than silence at the same frame.
-  CHECK(differences(render(hg::emoji::Look::Speaking, 10, 0), render(hg::emoji::Look::Speaking, 10, 100)) > 0);
+TEST("emoji face: the speaking bars run a fixed GIF wave, not the mic") {
+  // The bars stopped following the microphone (2026-11-09): playback runs on the board's
+  // own speaker with one mic and no AEC, so a "real" level is either her own voice or a
+  // reading that never updates. Same frame, any level, same pixels.
+  CHECK(render(hg::emoji::Look::Speaking, 10, 0) == render(hg::emoji::Look::Speaking, 10, 100));
+  // The wave still moves frame to frame — that is the animation the artwork intends.
+  CHECK(differences(render(hg::emoji::Look::Speaking, 0, 0), render(hg::emoji::Look::Speaking, 5, 0)) > 5);
 }
 
 TEST("emoji face: sad has a wavy mouth and no brows") {

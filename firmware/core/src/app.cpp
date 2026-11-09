@@ -51,10 +51,9 @@ constexpr uint32_t kFrameMs = 100;
 // How long the two timed faces stay up, and how long an idle screen waits before she sleeps.
 constexpr uint32_t kEmoteMs = 3000;
 constexpr uint32_t kSleepingAfterMs = 120000;
-// The pure-emoji board's resting face changes while nothing happens: sunglasses at 40 s,
-// maracas at 75 s, asleep at 2 min. A text board skips these — it has words on screen.
-constexpr uint32_t kCoolAfterMs = 40000;
-constexpr uint32_t kHappyAfterMs = 75000;
+// The pure-emoji board's resting face changes while nothing happens: a new one every
+// 20 s, at random, until she falls asleep at 2 min. A text board has words instead.
+constexpr uint32_t kIdleLookMs = 20000;
 constexpr uint32_t kSensorIntervalMs = 2000;
 constexpr uint32_t kDefaultCardMs = 15000;
 constexpr int kDashboardVersion = 1;    // the dashboard message this firmware draws
@@ -428,6 +427,9 @@ void App::send_hello() {
   if (profile_.has_cancel_button) inputs.push("cancel");
   if (profile_.has_scroll_buttons) inputs.push("up").push("down");
   caps.set("inputs", inputs);
+  // Which face the board draws: "emoji" has no text at all and only understands `emote`,
+  // "robot"/"mascot" draw their own artwork and ignore it.
+  caps.set("face", profile_.emoji_face ? "emoji" : (profile_.robot_face ? "robot" : "mascot"));
   caps.set("talk_mode", talk_mode_ == TalkMode::Tap ? "tap" : "hold");
   if (ui_ && can_open_dashboard()) {
     json::Value dash = json::Value::object();
@@ -735,6 +737,20 @@ void App::h_display(const json::Value& m) {
   overlay_until_ = ttl <= 0 ? 0 : now() + static_cast<uint32_t>(ttl * 1000);
 }
 
+// The resting rotation: six calm faces, never the one already up.
+emoji::Look App::pick_idle_look() {
+  static constexpr emoji::Look kPool[] = {emoji::Look::Neutral, emoji::Look::Cool,
+                                          emoji::Look::Happy,   emoji::Look::Bored,
+                                          emoji::Look::Loving,  emoji::Look::Excited,
+                                          emoji::Look::Hi,      emoji::Look::Silly};
+  constexpr size_t kCount = sizeof(kPool) / sizeof(kPool[0]);
+  uint8_t b = 0;
+  hal_.system->random_bytes(&b, 1);
+  emoji::Look pick = kPool[b % kCount];
+  if (pick == idle_look_) pick = kPool[(b + 1) % kCount];
+  return pick;
+}
+
 // The 20 faces, by the names the host and README_emoji.md use.
 emoji::Look look_from_name(std::string_view name) {
   struct Pair { std::string_view name; emoji::Look look; };
@@ -760,10 +776,20 @@ emoji::Look look_from_name(std::string_view name) {
 void App::h_emote(const json::Value& m) {
   const std::string& name = m["look"].as_string();
   if (name.empty()) return;
-  named_look_ = look_from_name(name);
   double ttl = m["ttl_s"].as_number(kNoticeMs / 1000.0);
   if (ttl <= 0) ttl = kNoticeMs / 1000.0;
-  named_look_until_ = now() + static_cast<uint32_t>(ttl * 1000);
+  const auto ttl_ms = static_cast<uint32_t>(ttl * 1000);
+  if (speaking()) {
+    // The mouth belongs to the sound. Hold the face until the playback ends, then show
+    // it for its full time (see tick()).
+    pending_look_ = look_from_name(name);
+    pending_look_ms_ = ttl_ms;
+    has_pending_look_ = true;
+    wake_display();
+    return;
+  }
+  named_look_ = look_from_name(name);
+  named_look_until_ = now() + ttl_ms;
   wake_display();
   update_model();
 }
@@ -1619,6 +1645,11 @@ void App::tick() {
   }
   // A turn that started and then went quiet (link dropped mid-reply, no turn.end) would
   // otherwise keep the screen in Responding for ever, where no card or reminder shows.
+  if (has_pending_look_ && !speaking()) {
+    named_look_ = pending_look_;
+    named_look_until_ = t + pending_look_ms_;
+    has_pending_look_ = false;
+  }
   if (mode_ == Mode::Responding && !speaking() && t - last_turn_rx_ > kRespondingTimeoutMs) {
     mode_ = Mode::Idle;
     mode_since_ = t;
@@ -1958,15 +1989,19 @@ void App::update_model() {
     m.emote = emote_;
   } else if (m.screen == Screen::Ready && m.hero && !display_sleeping_) {
     // Nothing is happening: let the resting face drift instead of staring. The emoji
-    // board goes idle glance → sunglasses → maracas → asleep; a text board keeps the
-    // single sleeping face it always had.
+    // board puts on a new face every 20 s (at random) until she falls asleep; a text
+    // board keeps the single sleeping face it always had.
     const uint32_t idle = t - idle_since_;
     if (idle >= kSleepingAfterMs) {
       m.emote = Emote::Sleeping;
-    } else if (m.emoji && idle >= kHappyAfterMs) {
-      m.emote = Emote::Happy;
-    } else if (m.emoji && idle >= kCoolAfterMs) {
-      m.emote = Emote::Cool;
+    } else if (m.emoji && !m.look_set) {
+      if (!idle_look_set_ || idle < idle_look_at_ || idle - idle_look_at_ >= kIdleLookMs) {
+        idle_look_ = pick_idle_look();
+        idle_look_at_ = idle;
+        idle_look_set_ = true;
+      }
+      m.look = idle_look_;
+      m.look_set = true;
     }
   }
   if (!display_sleeping_) render(m);

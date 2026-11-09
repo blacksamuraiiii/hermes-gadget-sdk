@@ -226,7 +226,13 @@ def gadget_face(args: dict, **_kw) -> str:
         _run(adapter, session.emote(look, seconds))
     except Exception as exc:
         return _error(f"could not reach {session.name}: {exc}")
-    return json.dumps({"success": True, "device": session.name, "look": look, "shown_for_s": seconds})
+    result = {"success": True, "device": session.name, "look": look, "shown_for_s": seconds}
+    face = session.face
+    if face and face != "emoji":
+        # The message went out, but a text board draws its own screens and ignores it.
+        result["not_shown"] = (f"{session.name} draws a {face} face, not the pure-emoji set; "
+                               "the emote was sent and ignored")
+    return json.dumps(result)
 
 
 def gadget_action(args: dict, **_kw) -> str:
