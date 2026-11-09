@@ -169,8 +169,12 @@ for ($i = 1; $i -le $MaxAttempts -and -not $restored; $i++) {
 }
 
 # ---- 5. relay 拉回来（看门狗 120 s 也会拉，别等）----
-if ($relayUp.Count -gt 0 -and (Test-Path $relayStart)) {
+# 总是调一次：relay_start.ps1 是幂等的，在跑就报 pid，没跑就拉起。之前只在「本来就在跑」
+# 时才重启，于是「relay 已经不在了」这种最常见的情形反而没人管——COM 口复位后空着。
+if (Test-Path $relayStart) {
     (& $relayStart 2>&1 | Out-String).Trim() -split "`r?`n" | Where-Object { $_ } | ForEach-Object { Say ('   ' + $_) }
+} else {
+    Say '   relay_start.ps1 not found: start the relay by hand before using the gadget'
 }
 
 # ---- 6. 最终回读与判据 ----
