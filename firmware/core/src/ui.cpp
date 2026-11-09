@@ -138,6 +138,8 @@ uint32_t robot_anim_key(const UiModel& m) {
 // and only an online link shows the state faces. Then the timed emote, then
 // the screen — the same order as robot_look.
 emoji::Look emoji_look(const UiModel& m) {
+  // What the host asked for wins: it came from the content of the turn.
+  if (m.look_set) return m.look;
   switch (m.link) {
     case Link::Connecting:
     case Link::Network: return emoji::Look::Connecting;

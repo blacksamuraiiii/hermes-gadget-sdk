@@ -208,6 +208,7 @@ class App {
   void h_audio_end(const json::Value& m);
   void h_audio_abort(const json::Value& m);
   void h_display(const json::Value& m);
+  void h_emote(const json::Value& m);
   void h_image_start(const json::Value& m);
   void h_image_end(const json::Value& m);
   void h_action(const json::Value& m);
@@ -423,6 +424,9 @@ class App {
   // it was. Text boards ignore it; a pure-emoji board has nothing else to show.
   Notice notice_face_ = Notice::None;
   uint32_t notice_face_until_ = 0;
+  // A face the host named in an `emote` message (the AI's read on the turn).
+  emoji::Look named_look_ = emoji::Look::Neutral;
+  uint32_t named_look_until_ = 0;
   uint32_t overlay_until_ = 0;  // 0 = until dismissed
   std::string card_title_, card_body_;
   int card_scroll_ = 0;

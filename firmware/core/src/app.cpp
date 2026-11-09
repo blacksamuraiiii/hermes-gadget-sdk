@@ -118,7 +118,7 @@ const App::Route App::kRoutes[] = {
     {"action", &App::h_action},           {"ping", &App::h_ping},
     {"notice", &App::h_notice},           {"error", &App::h_error},
     {"transcript", &App::h_transcript},   {"prompt", &App::h_prompt},
-    {"prompt.close", &App::h_prompt_close}, {"ota.offer", &App::h_ota_offer},
+    {"prompt.close", &App::h_prompt_close}, {"emote", &App::h_emote}, {"ota.offer", &App::h_ota_offer},
     {"ota.begin", &App::h_ota_begin},     {"ota.end", &App::h_ota_end},
     {"ota.abort", &App::h_ota_abort},     {"dashboard", &App::h_dashboard},
 };
@@ -733,6 +733,39 @@ void App::h_display(const json::Value& m) {
   double ttl = m["ttl_s"].as_number(kDefaultCardMs / 1000.0);
   overlay_ = Overlay::Card;
   overlay_until_ = ttl <= 0 ? 0 : now() + static_cast<uint32_t>(ttl * 1000);
+}
+
+// The 20 faces, by the names the host and README_emoji.md use.
+emoji::Look look_from_name(std::string_view name) {
+  struct Pair { std::string_view name; emoji::Look look; };
+  static constexpr Pair kPairs[] = {
+      {"neutral", emoji::Look::Neutral},       {"happy", emoji::Look::Happy},
+      {"sad", emoji::Look::Sad},               {"thinking", emoji::Look::Thinking},
+      {"sleeping", emoji::Look::Sleeping},     {"listening", emoji::Look::Listening},
+      {"speaking", emoji::Look::Speaking},     {"silly", emoji::Look::Silly},
+      {"laughing", emoji::Look::Laughing},     {"loving", emoji::Look::Loving},
+      {"angry", emoji::Look::Angry},           {"shocked", emoji::Look::Shocked},
+      {"embarrassed", emoji::Look::Embarrassed}, {"winking", emoji::Look::Winking},
+      {"excited", emoji::Look::Excited},       {"bored", emoji::Look::Bored},
+      {"cool", emoji::Look::Cool},             {"hi", emoji::Look::Hi},
+      {"connecting", emoji::Look::Connecting}, {"disconnected", emoji::Look::Disconnected}};
+  for (const auto& p : kPairs) {
+    if (p.name == name) return p.look;
+  }
+  return emoji::Look::Neutral;
+}
+
+// The host naming a face: what the AI thought the turn deserved. No words, no card —
+// on a pure-emoji board this is the whole message.
+void App::h_emote(const json::Value& m) {
+  const std::string& name = m["look"].as_string();
+  if (name.empty()) return;
+  named_look_ = look_from_name(name);
+  double ttl = m["ttl_s"].as_number(kNoticeMs / 1000.0);
+  if (ttl <= 0) ttl = kNoticeMs / 1000.0;
+  named_look_until_ = now() + static_cast<uint32_t>(ttl * 1000);
+  wake_display();
+  update_model();
 }
 
 // A full snapshot: it replaces what the dashboard showed. Unlike a card it doesn't
@@ -1906,6 +1939,8 @@ void App::update_model() {
     notice_face_ = Notice::None;
   }
   m.notice = notice_face_;
+  m.look_set = static_cast<int32_t>(now() - named_look_until_) < 0;
+  m.look = named_look_;
   if (m.emoji) {
     m.hero = true;
     m.headline.clear();

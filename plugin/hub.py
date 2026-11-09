@@ -360,6 +360,15 @@ class DeviceSession:
         await self.send_json(protocol.message("prompt", id=prompt_id, title=title, text=text,
                                               ttl_s=ttl_s, kind=kind))
 
+    async def emote(self, look: str, ttl_s: float = 8) -> None:
+        """Ask the device to wear one named face for a while.
+
+        ``look`` is one of the 20 names in README_emoji.md (neutral, happy, laughing,
+        loving, angry, shocked, ...). A board with no pure-emoji face ignores it; a text
+        board keeps showing its own screens.
+        """
+        await self.send_json(protocol.message("emote", look=look, ttl_s=ttl_s))
+
     async def close_prompt(self, prompt_id: str) -> None:
         await self.send_json(protocol.message("prompt.close", id=prompt_id))
 

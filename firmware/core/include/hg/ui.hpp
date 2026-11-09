@@ -7,6 +7,8 @@
 // timing (measure) reads a clock around the drawing but never changes it.
 #pragma once
 
+#include "hg/emoji_face.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -67,6 +69,10 @@ struct UiModel {
   Link link = Link::Offline;
   // Set while a reminder is fresh (approval waiting, a question, a finished task).
   Notice notice = Notice::None;
+  // A look the host asked for by name (`emote` message): what the AI thought the turn
+  // deserved. It outranks notice, emote and the screen until it expires.
+  emoji::Look look = emoji::Look::Neutral;
+  bool look_set = false;
   // A face the state alone does not explain: happy for a moment after a wake hit, sad
   // for a moment after a turn with no speech, sleeping after a long idle, silly
   // when a turn is not understood (no trigger sets it yet). Auto means

@@ -50,6 +50,33 @@ DISPLAY_SCHEMA = {
     },
 }
 
+FACE_SCHEMA = {
+    "name": "gadget_face",
+    "description": "Show one of the gadget's 20 emoji faces for a few seconds — the device's "
+                   "only way to react on a pure-emoji build, which has no text. Pick the face "
+                   "that matches how the last answer felt to read. Optional: skip it when nothing "
+                   "stands out.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "look": {
+                "type": "string",
+                "enum": ["neutral", "happy", "sad", "thinking", "sleeping", "listening",
+                         "speaking", "silly", "laughing", "loving", "angry", "shocked",
+                         "embarrassed", "winking", "excited", "bored", "cool", "hi",
+                         "connecting", "disconnected"],
+                "description": "Which face. happy=finished well, laughing/amused, loving=affection, "
+                               "excited=big win, sad=missed/unclear, angry=refused/bad, "
+                               "shocked=surprising, embarrassed=oops, winking=playful, "
+                               "silly=confused/asking, cool=relaxed, bored=idle, hi=greeting.",
+            },
+            "seconds": {"type": "number", "description": "How long to hold it. Default 8."},
+            "device": _DEVICE_PARAM,
+        },
+        "required": ["look"],
+    },
+}
+
 WEATHER_SCHEMA = {
     "name": "gadget_weather",
     "description": "Today's weather and a short forecast for the place the gadget is set to "
@@ -177,6 +204,31 @@ def gadget_display(args: dict, **_kw) -> str:
     return json.dumps(result)
 
 
+def gadget_face(args: dict, **_kw) -> str:
+    adapter = _adapter()
+    if adapter is None:
+        return _error("gadget hub is not running in this process")
+    session, err = _resolve(adapter, args.get("device"))
+    if err:
+        return _error(err)
+    if (err := _usable(session)):
+        return _error(err)
+    look = str(args.get("look") or "").strip().lower()
+    if not look:
+        return _error("look is required")
+    try:
+        seconds = float(args.get("seconds", 8))
+    except (TypeError, ValueError):
+        seconds = 8.0
+    if seconds <= 0:
+        seconds = 8.0
+    try:
+        _run(adapter, session.emote(look, seconds))
+    except Exception as exc:
+        return _error(f"could not reach {session.name}: {exc}")
+    return json.dumps({"success": True, "device": session.name, "look": look, "shown_for_s": seconds})
+
+
 def gadget_action(args: dict, **_kw) -> str:
     adapter = _adapter()
     if adapter is None:
@@ -252,6 +304,7 @@ def register_tools(ctx) -> None:
     for schema, handler, emoji, check in (
         (DEVICES_SCHEMA, gadget_devices, "📟", available),
         (DISPLAY_SCHEMA, gadget_display, "🖥️", available),
+        (FACE_SCHEMA, gadget_face, "😶", available),
         (ACTION_SCHEMA, gadget_action, "🎛️", available),
         (WEATHER_SCHEMA, gadget_weather, "🌤️", weather_available),
     ):
