@@ -419,6 +419,10 @@ class App {
   // overlays
   enum class Overlay : uint8_t { None, Card, Image, Dashboard };
   Overlay overlay_ = Overlay::None;
+  // The reminder the face should wear for kNoticeMs: what the host's prompt/card said
+  // it was. Text boards ignore it; a pure-emoji board has nothing else to show.
+  Notice notice_face_ = Notice::None;
+  uint32_t notice_face_until_ = 0;
   uint32_t overlay_until_ = 0;  // 0 = until dismissed
   std::string card_title_, card_body_;
   int card_scroll_ = 0;

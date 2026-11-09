@@ -43,6 +43,12 @@ enum class Screen : uint8_t {
 // face from the screen and the clock; the others are a timed override or a resting face.
 enum class Emote : uint8_t { Auto, Happy, Sad, Sleeping, Silly };
 
+// Something the user has to act on, or a task that just finished. The host says which
+// (the prompt's and the card's `kind`); a pure-emoji board turns it into a face, a
+// text board keeps showing the words. Held for kNoticeMs, then the face goes back to
+// whatever the screen says.
+enum class Notice : uint8_t { None, Approval, Clarify, Done };
+
 enum class Link : uint8_t { Offline, Network, Connecting, Online };
 
 const char* screen_name(Screen s);
@@ -59,6 +65,8 @@ struct DashRow {
 struct UiModel {
   Screen screen = Screen::Boot;
   Link link = Link::Offline;
+  // Set while a reminder is fresh (approval waiting, a question, a finished task).
+  Notice notice = Notice::None;
   // A face the state alone does not explain: happy for a moment after a wake hit, sad
   // for a moment after a turn with no speech, sleeping after a long idle, silly
   // when a turn is not understood (no trigger sets it yet). Auto means

@@ -349,18 +349,30 @@ class DeviceSession:
             self.hub.store.confirm(self.device_id)
         await self.send_json(protocol.message("paired" if paired else "unpaired"))
 
-    async def ask(self, prompt_id: str, title: str, text: str, ttl_s: float | None = None) -> None:
-        """Show a yes/no question; the answer arrives as ``on_prompt_reply``."""
-        await self.send_json(protocol.message("prompt", id=prompt_id, title=title, text=text, ttl_s=ttl_s))
+    async def ask(self, prompt_id: str, title: str, text: str, ttl_s: float | None = None,
+                  kind: str = "") -> None:
+        """Show a yes/no question; the answer arrives as ``on_prompt_reply``.
+
+        ``kind`` is what the question is about ("approval" for a permission request,
+        anything else for a choice). A board with a pure-emoji face has no words to
+        read, so it turns the kind into a face instead.
+        """
+        await self.send_json(protocol.message("prompt", id=prompt_id, title=title, text=text,
+                                              ttl_s=ttl_s, kind=kind))
 
     async def close_prompt(self, prompt_id: str) -> None:
         await self.send_json(protocol.message("prompt.close", id=prompt_id))
 
-    async def show_card(self, title: str, body: str, ttl_s: float = 15) -> bool:
-        """Show a card. False when it is held until the screen lights up."""
+    async def show_card(self, title: str, body: str, ttl_s: float = 15, kind: str = "") -> bool:
+        """Show a card. False when it is held until the screen lights up.
+
+        ``kind`` labels what the card is for ("done" for a finished task), so a board
+        with a pure-emoji face can show a face instead of the words.
+        """
         if self._hold_view(("card", title, body), ttl_s):
             return False
-        await self.send_json(protocol.message("display", title=title, body=body, ttl_s=ttl_s))
+        await self.send_json(protocol.message("display", title=title, body=body, ttl_s=ttl_s,
+                                              kind=kind))
         return True
 
     async def show_image(self, width: int, height: int, rgb565: bytes, ttl_s: float = 30) -> bool:

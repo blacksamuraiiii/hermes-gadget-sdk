@@ -826,7 +826,7 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
         queue[:] = [p for p in queue if not p.expired()]
         if queue:
             head = queue[0]
-            await session.ask(head.id, head.title, head.text, ttl_s=head.ttl_s)
+            await session.ask(head.id, head.title, head.text, ttl_s=head.ttl_s, kind=head.kind)
 
     def _take_prompt(self, device_id: str, prompt_id: str) -> Optional[_Prompt]:
         queue = self._prompts.get(device_id) or []
@@ -988,7 +988,7 @@ class GadgetAdapter(BasePlatformAdapter, HubDelegate):
             # the firmware carries CJK glyphs, English on an ASCII-only build.
             head, text = notify.card_text(spec, session.charset) if spec else (title, body)
             if head:
-                await session.show_card(head, text, ttl_s=ttl_s)
+                await session.show_card(head, text, ttl_s=ttl_s, kind=cue)
         return True
 
     async def play_cue(self, cue: str) -> bool:

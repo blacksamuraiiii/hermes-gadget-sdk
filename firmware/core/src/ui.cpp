@@ -141,6 +141,14 @@ emoji::Look emoji_look(const UiModel& m) {
     case Link::Offline: return emoji::Look::Disconnected;
     case Link::Online: break;
   }
+  // A reminder speaks before the resting face does: the user has to act on it, and on
+  // a pure-emoji board this face is the only sign that anything happened.
+  switch (m.notice) {
+    case Notice::Approval: return emoji::Look::Silly;   // "?" — the host wants permission
+    case Notice::Clarify: return emoji::Look::Shocked;  // "!!" — the host needs a choice
+    case Notice::Done: return emoji::Look::Happy;       // maracas — the task finished
+    case Notice::None: break;
+  }
   switch (m.emote) {
     case Emote::Happy: return emoji::Look::Happy;
     case Emote::Sad: return emoji::Look::Sad;
@@ -166,6 +174,7 @@ uint32_t emoji_anim_key(const UiModel& m) {
     case emoji::Look::Speaking:
       return static_cast<uint32_t>(look) * 16 + (m.frame % 20) + (m.level / 10) * 64;
     case emoji::Look::Sad:
+    case emoji::Look::Happy:   // shaking maracas
     case emoji::Look::Silly:
     case emoji::Look::Laughing:
     case emoji::Look::Loving:
@@ -737,6 +746,9 @@ void Ui::draw_content(Canvas& c, const UiModel& m) {
   const int margin = 4 * s;
   const int lh = Canvas::line_height(s);
   c.fill_rect(0, y0, w, y1 - y0, bg_);
+  // The pure-emoji branch has no text band: the face owns the screen. Nothing here
+  // to draw, and clearing the band is what a face-to-face switch needs anyway.
+  if (m.emoji) return;
   int y = y0 + margin;
 
   if (m.color_test) {
@@ -930,20 +942,20 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   const int ch = caption_h(own_face ? std::max(0, lines) : std::max<int>(1, lines));
   // A board with its own face leaves out the bottom bar, so the face and its caption
   // get the whole area; the caption also sits a little further down.
-  const int main_h = m.robot ? (panel_.no_top_band ? info_.height : info_.height - layout_.top_h)
-                             : layout_.main_h;
-  const int gap = m.robot ? 5 * s : 2 * s;
+  const int main_h = own_face ? (panel_.no_top_band ? info_.height : info_.height - layout_.top_h)
+                              : layout_.main_h;
+  const int gap = own_face ? 5 * s : 2 * s;
   int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
   // A board's own face is drawn `zoom()` times its box, so cap the box to keep the
   // whole design frame inside the area: otherwise the waves beside the head land
   // outside a round panel and disappear.
-  if (m.robot) avail = std::min(avail, static_cast<int>(w / robot::zoom()));
+  if (own_face) avail = std::min(avail, static_cast<int>(w / (m.robot ? robot::zoom() : emoji::zoom())));
   // The mascot only exists at 64/96/144/192; a board's own face scales to anything,
   // so it takes the room it is given instead of stepping down a size.
-  g.size = m.robot ? std::max(32, avail) : mascot::pick(avail, mascot::Frame::Idle)->size;
+  g.size = own_face ? std::max(32, avail) : mascot::pick(avail, mascot::Frame::Idle)->size;
   const int block = g.size + gap + ch + buttons_h;
   g.x = (w - g.size) / 2;
-  g.y = (m.robot && panel_.no_top_band ? 0 : layout_.main_y) + std::max(s, (main_h - block) / 2);
+  g.y = (own_face && panel_.no_top_band ? 0 : layout_.main_y) + std::max(s, (main_h - block) / 2);
   g.caption_y = g.y + g.size + gap;
   g.buttons_y = g.caption_y + ch + 2 * s;
   return g;

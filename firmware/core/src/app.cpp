@@ -31,6 +31,9 @@ constexpr uint32_t kRespondingTimeoutMs = 45000;
 // A command word that keeps firing while the user is still talking must not restart the
 // recording: one hit opens one turn.
 constexpr uint32_t kWakeHitThrottleMs = 2000;
+// How long a reminder face stays up. Long enough to notice from across the room, short
+// enough that it does not sit there looking like the current state.
+constexpr uint32_t kNoticeMs = 8000;
 // The host plays the "我在" cue after a hit (same cue path as reminders). Recording while it
 // plays would capture the cue itself on a single-microphone board, so the turn waits: this long
 // at most when the host sends nothing.
@@ -716,6 +719,12 @@ void App::h_display(const json::Value& m) {
   card_title_ = i18n::fold_to_font(m["title"].as_string());
   card_body_ = i18n::fold_to_font(m["body"].as_string());
   card_scroll_ = 0;
+  // A card that says a task finished gets the happy face; other cards (a waiting
+  // notice, a pushed message) keep whatever the screen already shows.
+  if (std::string_view(m["kind"].as_string()) == "done") {
+    notice_face_ = Notice::Done;
+    notice_face_until_ = now() + kNoticeMs;
+  }
   page_at_ = now() + page_dwell_ms();
   double ttl = m["ttl_s"].as_number(kDefaultCardMs / 1000.0);
   overlay_ = Overlay::Card;
@@ -807,6 +816,10 @@ void App::h_prompt(const json::Value& m) {
   prompt_title_ = i18n::fold_to_font(m["title"].as_string());
   prompt_text_ = i18n::fold_to_font(m["text"].as_string());
   prompt_since_ = now();
+  // "approval" is the host asking for permission; anything else (a clarify question, a
+  // slash-command confirmation) is asking for a choice.
+  notice_face_ = std::string_view(m["kind"].as_string()) == "approval" ? Notice::Approval : Notice::Clarify;
+  notice_face_until_ = now() + kNoticeMs;
   double ttl = m["ttl_s"].as_number(0);
   prompt_until_ = ttl <= 0 ? 0 : now() + static_cast<uint32_t>(ttl * 1000);
 }
@@ -1881,6 +1894,25 @@ void App::update_model() {
       *power_status_->battery_percent <= 10 && power_status_->external_power == false)
     m.detail = tr(Msg::LowBattery);
   if (!hint_flash_.empty()) m.hint = hint_flash_;
+  // The pure-emoji branch shows the face and nothing else: no headline, no body, no
+  // card text, no buttons. Every screen keeps the hero layout so the face never
+  // blanks out. What the face shows still comes from the screen and the link
+  // (see emoji_look), so the states survive — only the words go.
+  if (notice_face_ != Notice::None && static_cast<int32_t>(now() - notice_face_until_) >= 0) {
+    notice_face_ = Notice::None;
+  }
+  m.notice = notice_face_;
+  if (m.emoji) {
+    m.hero = true;
+    m.headline.clear();
+    m.detail.clear();
+    m.body.clear();
+    m.yes.clear();
+    m.no.clear();
+    m.hint.clear();
+    m.qr = nullptr;
+    m.dash.clear();
+  }
   // A timed face (happy, sad) outranks the screen; otherwise an idle hero falls asleep.
   const uint32_t t = now();
   if (emote_until_ != 0 && static_cast<int32_t>(emote_until_ - t) > 0) {
