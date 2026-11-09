@@ -576,6 +576,14 @@ class DeviceSession:
                 "longer replies must be scrolled.")
         parts.append("Replies are also spoken aloud by its speaker." if self.has_speaker
                      else "It has no speaker; replies are only shown on screen.")
+        if self.face == "emoji":
+            # One profile serves both builds: this line is how the model tells them apart.
+            parts.append("This build's screen has NO text at all — only one of 20 emoji faces. "
+                         "React with the gadget_face tool (happy, laughing, loving, excited, "
+                         "shocked, sad, angry, embarrassed, silly, winking, cool, thinking, "
+                         "bored, hi, sleeping, neutral); skip it when nothing stands out.")
+        elif self.face:
+            parts.append("Its screen draws text, so gadget_face does nothing here.")
         if self.actions:
             names = ", ".join(sorted(self.action_names()))
             parts.append(f"Device actions you can invoke with the gadget_action tool: {names}.")
