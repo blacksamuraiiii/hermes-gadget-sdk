@@ -43,6 +43,9 @@ struct DisplayInfo {
   // No bottom bar: the board has no buttons worth a hint row (one BOOT key), so the
   // leftover rows go to the text band. The hero band already uses the full height.
   bool no_bottom_bar = false;
+  // No top band on a round panel: the board has no touch (no settings hold target
+  // lives there), so the header row starts at the top of the UI area instead.
+  bool no_top_band = false;
   // Most body lines a text screen may use. 0 keeps the layout's own count; a small
   // round panel caps it so the last line is not swallowed by the bezel.
   uint8_t body_rows_cap = 0;

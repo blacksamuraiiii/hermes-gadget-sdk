@@ -1,2 +1,6 @@
 * text=auto eol=lf
 *.png binary
+
+# Windows 批处理必须用 CRLF：cmd.exe 按字节读行，LF-only 的 .bat 会把整行拆散逐字执行
+*.bat text eol=crlf
+*.cmd text eol=crlf

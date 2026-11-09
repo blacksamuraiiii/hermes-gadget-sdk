@@ -218,6 +218,13 @@ def test_temperatures_are_spoken_in_chinese():
     assert textfmt.speak_celsius("-5°C") == "-5摄氏度"
     assert textfmt.speak_celsius("没有温度") == "没有温度"
 
+    assert textfmt.speak_percent("湿度 62%") == "湿度 62个百分点"
+    assert textfmt.speak_percent("增长 5~9%") == "增长 5到9个百分点"
+    assert textfmt.speak_percent("环比 +3.5%") == "环比 +3.5个百分点"
+    assert textfmt.speak_percent("全角 40％") == "全角 40个百分点"
+    assert textfmt.speak_percent("单独 %") == "单独 个百分点"
+    assert textfmt.speak_percent("没有百分比") == "没有百分比"
+
 
 def test_a_chinese_screen_keeps_the_degree_sign():
     assert textfmt.for_device("气温 10~22°C", "utf-8") == "气温 10~22°C"

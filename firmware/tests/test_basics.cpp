@@ -4,6 +4,7 @@
 #include "check.hpp"
 #include "hg/canvas.hpp"
 #include "hg/crypto.hpp"
+#include "hg/font.hpp"
 #include "hg/json.hpp"
 #include "hg/protocol.hpp"
 #include "hg/vad.hpp"
@@ -128,14 +129,26 @@ TEST("protocol: binary frame header round trips") {
 }
 
 TEST("canvas: word wrap keeps words whole and splits overlong ones") {
+  // Invariants, not fixed splits: the column cost of a glyph follows the build's
+  // fonts, so where a line breaks moves with the face (12 px vs the moji's 22 px),
+  // while the words themselves must survive whole.
   auto lines = hg::wrap_text("the quick brown fox jumps", 10);
-  CHECK_EQ(lines.size(), size_t(3));
-  CHECK_EQ(lines[0], std::string("the quick"));
-  CHECK_EQ(lines[1], std::string("brown fox"));
-  CHECK_EQ(lines[2], std::string("jumps"));
+  std::string rebuilt;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    CHECK(hg::font::columns(lines[i]) <= 10);
+    if (i) rebuilt += ' ';
+    rebuilt += lines[i];
+  }
+  CHECK(lines.size() > 1);
+  CHECK_EQ(rebuilt, std::string("the quick brown fox jumps"));
   auto split = hg::wrap_text("abcdefghijklmno", 6);
-  CHECK_EQ(split.size(), size_t(3));
-  CHECK_EQ(split[2], std::string("mno"));
+  std::string chars;
+  for (const std::string& line : split) {
+    CHECK(hg::font::columns(line) <= 6);
+    chars += line;
+  }
+  CHECK(split.size() > 1);  // a word longer than the budget splits, never shrinks
+  CHECK_EQ(chars, std::string("abcdefghijklmno"));
   auto paras = hg::wrap_text("a\n\nb", 10);
   CHECK_EQ(paras.size(), size_t(3));
   CHECK_EQ(paras[1], std::string());

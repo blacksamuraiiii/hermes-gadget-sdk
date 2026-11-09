@@ -160,6 +160,7 @@ namespace hg::i18n {
   X(StartingNewSession,     "Starting a new session") \
   X(Thinking,               "Thinking") \
   X(ButtonToStop,           "{0} to stop") \
+  X(Running,                "Running") \
   X(Speaking,               "Speaking") \
   X(HoldToReply,            "Hold to reply") \
   X(ButtonToReply,          "{0} to reply") \

@@ -227,13 +227,19 @@ Ui::Ui(Display& display)
   s = std::min(4, s * std::max<uint8_t>(1, panel_.font_scale));
   layout_.scale = s;
   const int bar_h = Canvas::line_height(s) + 2 * s;
+  layout_.header_h = Canvas::line_height(s + 1) + 4 * s;
   // A round panel's top band holds the link dot and one line of the settings
   // label: 2r + 14s, and never under 36 px so the hold target stays finger-sized.
-  const int dot_r = std::max(2, 3 * s / 2 + 1);
-  layout_.top_h = panel_.round ? std::max(36, 2 * dot_r + 14 * s) : bar_h;
+  // A round panel without touch has no hold target and no buttons to hint — the
+  // band is an arc margin only, sized to keep the header's state dot whole.
+  if (panel_.no_top_band) {
+    layout_.top_h = 0;
+  } else {
+    const int dot_r = std::max(2, 3 * s / 2 + 1);
+    layout_.top_h = panel_.round ? std::max(36, 2 * dot_r + 14 * s) : bar_h;
+  }
   layout_.bottom_h = panel_.no_bottom_bar ? 0 : bar_h;
   layout_.title_w = panel_.round ? std::min(w, 120 * s) : w;
-  layout_.header_h = Canvas::line_height(s + 1) + 4 * s;
   layout_.main_y = layout_.top_h;
   layout_.main_h = h - layout_.top_h - layout_.bottom_h;
   int margin = 4 * s;
@@ -246,6 +252,14 @@ Ui::Ui(Display& display)
 
   // Hero layout: the mascot is sized per screen (see hero_geom).
   layout_.hero_cols = cols_for(w - 4 * s, s);
+
+  // A merged top band cannot start on the narrowing cap: the header's state dot
+  // would straddle the arc. A plain band of the same height the labelled band
+  // used keeps the dot, the word and the divider where they always were; the
+  // text band still counts five rows, so the four-row cap costs nothing.
+  if (panel_.no_top_band && panel_.round) {
+    layout_.top_h = 36;
+  }
 }
 
 void Ui::invalidate() { valid_ = false; }
@@ -344,21 +358,14 @@ void Ui::draw_frame(const UiModel& m) {
   hashes[3] = Hash().add(m.hint).get();
 
   if (m.hero) {
-    // Hero mode: top bar, one face band, and the bottom bar unless the board draws
-    // its own face (then the caption takes that space).
-    for (int i : {0, 3}) {
-      if (i == 3 && m.robot) continue;
-      if (valid_ && hash_[i] == hashes[i]) continue;
-      int y0 = i == 0 ? 0 : y_bottom, y1 = i == 0 ? y_header : h;
-      c.set_clip_rows(y0, y1);
-      if (i == 0) draw_top(c, m);
-      else draw_bottom(c, m);
-      flush(y0, y1);
-      hash_[i] = hashes[i];
-    }
+    // Hero mode: one face band, then the bars. The bars go last because a board
+    // with a merged top band draws its face over the full glass, and the link dot
+    // must land on top of it (draw_top skips the band fill in that case).
     uint32_t stat = Hash().val(m.screen).add(m.headline).add(m.detail).add(m.yes).add(m.no).val(m.caption_lines).get();
     uint32_t anim = hero_anim_key(m);
-    int y0 = y_header, y1 = y_bottom;
+    // A merged top band is empty glass: the face band starts at the panel's top
+    // edge, so a tall face keeps its antenna instead of being cut at the band.
+    int y0 = panel_.no_top_band ? 0 : y_header, y1 = y_bottom;
     bool redraw = !valid_ || !hero_valid_ || stat != hero_static_;
     int next_y0 = -1, next_y1 = -1;
     if (!redraw && anim != hero_anim_) {
@@ -379,12 +386,28 @@ void Ui::draw_frame(const UiModel& m) {
       hero_painted_y0_ = next_y0;
       hero_painted_y1_ = next_y1;
     }
+    for (int i : {0, 3}) {
+      if (i == 3 && m.robot) continue;
+      if (valid_ && hash_[i] == hashes[i]) continue;
+      int by0 = i == 0 ? 0 : y_bottom, by1 = i == 0 ? y_header : h;
+      c.set_clip_rows(by0, by1);
+      if (i == 0) draw_top(c, m);
+      else draw_bottom(c, m);
+      flush(by0, by1);
+      hash_[i] = hashes[i];
+    }
     hero_static_ = stat;
     hero_anim_ = anim;
     hero_valid_ = true;
     hash_[1] = hash_[2] = 0;  // header and content must repaint when hero mode ends
     valid_ = true;
     return;
+  }
+  // The face painted over rows the top band and the bottom bar own. On the first
+  // text frame after hero mode, repaint every band once so no face pixels survive
+  // in the bars (a stale antenna tip above the header was the visible symptom).
+  if (hero_valid_) {
+    hash_[0] = hash_[1] = hash_[2] = hash_[3] = 0;
   }
   hero_valid_ = false;
 
@@ -414,9 +437,22 @@ void Ui::draw_frame(const UiModel& m) {
 }
 
 void Ui::draw_top(Canvas& c, const UiModel& m) {
+  if (layout_.top_h == 0) return;
+  // A merged top band draws no link dot (the antenna lamp carries it). On a text
+  // frame the band still has to be cleared: the face painted its antenna up here,
+  // and skipping the fill is what left antenna leftovers above the header.
+  if (panel_.no_top_band) {
+    if (!m.hero) c.fill_rect(0, 0, info_.width, layout_.top_h, bg_);
+    return;
+  }
   const int s = layout_.scale;
   const int w = info_.width;
-  c.fill_rect(0, 0, w, layout_.top_h, panel_.round ? bg_ : kBar);
+  // On a merged-band board the face owns the glass: on a hero frame the band is
+  // sky above the face, so only the link dot is drawn (a band fill would eat the
+  // face's antenna where the old band used to end).
+  if (!(panel_.no_top_band && m.hero)) {
+    c.fill_rect(0, 0, w, layout_.top_h, panel_.round ? bg_ : kBar);
+  }
   uint16_t dot = kRed;
   i18n::Msg word = i18n::Msg::LinkOffline;
   switch (m.link) {
@@ -570,8 +606,9 @@ void Ui::draw_indicator(Canvas& c, const UiModel& m, int cx, int cy, int r) {
       c.fill_circle(cx, cy, r / 3, kAccent);
       break;
     case Screen::Ready: {
-      int pulse = tri(m.frame, 24);  // 0..12
-      c.fill_circle(cx, cy, r * (8 + pulse / 3) / 12, kAccent);
+      // Same solid dot as a reply that is not speaking yet: one shape for "here",
+      // one word for what the screen is doing (Ready vs Running).
+      c.fill_circle(cx, cy, r * 2 / 3, kAccent);
       break;
     }
     case Screen::Listening:
@@ -581,7 +618,10 @@ void Ui::draw_indicator(Canvas& c, const UiModel& m, int cx, int cy, int r) {
       if (m.speaking) {
         bars(kAccent, 40 + tri(m.frame, 8) * 10);
       } else {
-        c.fill_circle(cx, cy, r * 2 / 3, kAccent);
+        // A reply is on its way: the dot breathes below the Ready dot's size, so the
+        // solid Ready circle is the largest a state dot ever gets.
+        const int pulse = tri(m.frame, 24);  // 0..12
+        c.fill_circle(cx, cy, (r * 2 / 3) * (8 + pulse / 3) / 12, kAccent);
       }
       break;
     case Screen::Card:
@@ -832,7 +872,8 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   const int ch = caption_h(m.robot ? std::max(0, lines) : std::max<int>(1, lines));
   // A board with its own face leaves out the bottom bar, so the face and its caption
   // get the whole area; the caption also sits a little further down.
-  const int main_h = m.robot ? info_.height - layout_.top_h : layout_.main_h;
+  const int main_h = m.robot ? (panel_.no_top_band ? info_.height : info_.height - layout_.top_h)
+                             : layout_.main_h;
   const int gap = m.robot ? 5 * s : 2 * s;
   int avail = std::min(w - 8 * s, main_h - ch - buttons_h - 4 * s);
   // A board's own face is drawn `zoom()` times its box, so cap the box to keep the
@@ -844,7 +885,7 @@ Ui::HeroGeom Ui::hero_geom(const UiModel& m) const {
   g.size = m.robot ? std::max(32, avail) : mascot::pick(avail, mascot::Frame::Idle)->size;
   const int block = g.size + gap + ch + buttons_h;
   g.x = (w - g.size) / 2;
-  g.y = layout_.main_y + std::max(s, (main_h - block) / 2);
+  g.y = (m.robot && panel_.no_top_band ? 0 : layout_.main_y) + std::max(s, (main_h - block) / 2);
   g.caption_y = g.y + g.size + gap;
   g.buttons_y = g.caption_y + ch + 2 * s;
   return g;
@@ -897,7 +938,7 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
     const int margin = static_cast<int>(static_cast<float>(size) * (robot::zoom() - 1.0f) / 2) + 2;
     add(my - margin, my + size + margin);
   }
-  y0 = std::max(top - 1, layout_.top_h);
+  y0 = std::max(top - 1, panel_.no_top_band ? 0 : layout_.top_h);
   y1 = std::min(bottom + 2, m.robot ? static_cast<int>(info_.height)
                                     : static_cast<int>(info_.height) - layout_.bottom_h);
 }
@@ -905,7 +946,7 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
 void Ui::draw_hero(Canvas& c, const UiModel& m) {
   const int s = layout_.scale;
   const int w = info_.width;
-  const int y0 = layout_.top_h;
+  const int y0 = panel_.no_top_band ? 0 : layout_.top_h;
   const int y1 = m.robot ? info_.height : info_.height - layout_.bottom_h;
   const int lh = Canvas::line_height(s);
   c.fill_rect(0, y0, w, y1 - y0, bg_);
@@ -919,7 +960,16 @@ void Ui::draw_hero(Canvas& c, const UiModel& m) {
   const mascot::Anchors& a = mascot::anchors();
   if (m.robot) {
     // The board's own face: her shell, eyes and mood extras, all from primitives.
-    robot::draw(c, mx, my, size, robot_look(m), m.frame, m.level, kText, bg_);
+    // Her antenna ball is the board's link lamp: green on line, yellow while
+    // connecting, red without a link.
+    uint16_t lamp = kRed;
+    switch (m.link) {
+      case Link::Online: lamp = kGreen; break;
+      case Link::Network:
+      case Link::Connecting: lamp = kYellow; break;
+      case Link::Offline: lamp = kRed; break;
+    }
+    robot::draw(c, mx, my, size, robot_look(m), m.frame, m.level, kText, bg_, lamp);
   } else if (const mascot::Bitmap* b = mascot::pick(size, mascot_frame(m))) {
     c.bitmap1(mx, my, b->size, b->size, b->bits, kText);
   }

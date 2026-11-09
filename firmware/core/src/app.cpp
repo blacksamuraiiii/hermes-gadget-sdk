@@ -575,7 +575,7 @@ void App::h_status(const json::Value& m) {
 
 void App::h_transcript(const json::Value& m) {
   // What speech-to-text heard; shown as the user's line while Hermes works.
-  user_echo_ = m["text"].as_string();
+  user_echo_ = i18n::fold_to_font(m["text"].as_string());
   last_turn_rx_ = now();
   if (status_ == "Sending...") status_.clear();
 }
@@ -583,7 +583,7 @@ void App::h_transcript(const json::Value& m) {
 void App::h_reply_delta(const json::Value& m) {
   wake_display();
   if (mode_ == Mode::Listening) return;
-  reply_ = m["text"].as_string();
+  reply_ = i18n::fold_to_font(m["text"].as_string());
   scroll_ = -1;
   last_turn_rx_ = now();
   if (mode_ != Mode::Responding) {
@@ -595,7 +595,7 @@ void App::h_reply_delta(const json::Value& m) {
 void App::h_reply(const json::Value& m) {
   wake_display();
   last_turn_rx_ = now();
-  const std::string& text = m["text"].as_string();
+  const std::string text = i18n::fold_to_font(m["text"].as_string());
   if (m["interim"].as_bool()) {
     status_ = text;
     return;
@@ -713,8 +713,8 @@ void App::on_transport_binary(const uint8_t* data, size_t len) {
 
 void App::h_display(const json::Value& m) {
   wake_display();
-  card_title_ = m["title"].as_string();
-  card_body_ = m["body"].as_string();
+  card_title_ = i18n::fold_to_font(m["title"].as_string());
+  card_body_ = i18n::fold_to_font(m["body"].as_string());
   card_scroll_ = 0;
   page_at_ = now() + page_dwell_ms();
   double ttl = m["ttl_s"].as_number(kDefaultCardMs / 1000.0);
@@ -804,8 +804,8 @@ void App::h_prompt(const json::Value& m) {
   const std::string& id = m["id"].as_string();
   if (id.empty()) return;
   prompt_id_ = id;
-  prompt_title_ = m["title"].as_string();
-  prompt_text_ = m["text"].as_string();
+  prompt_title_ = i18n::fold_to_font(m["title"].as_string());
+  prompt_text_ = i18n::fold_to_font(m["text"].as_string());
   prompt_since_ = now();
   double ttl = m["ttl_s"].as_number(0);
   prompt_until_ = ttl <= 0 ? 0 : now() + static_cast<uint32_t>(ttl * 1000);
@@ -868,7 +868,7 @@ void App::h_ping(const json::Value& m) {
 }
 
 void App::h_notice(const json::Value& m) {
-  notice_ = m["text"].as_string();
+  notice_ = i18n::fold_to_font(m["text"].as_string());
   double ttl = m["ttl_s"].as_number(8);
   notice_until_ = now() + static_cast<uint32_t>(std::max(1.0, ttl) * 1000);
 }
@@ -1852,8 +1852,7 @@ void App::update_model() {
     m.hint = tr(Msg::ButtonToStop, {cancel});
   } else if (mode_ == Mode::Responding) {
     m.screen = Screen::Responding;
-    m.headline = m.speaking ? tr(Msg::Speaking)
-                            : (profile_.robot_face && !profile_.greeting.empty() ? profile_.greeting : "Hermes");
+    m.headline = m.speaking ? tr(Msg::Speaking) : tr(Msg::Running);
     m.detail = status_;
     m.body = reply_;
     m.hint = profile_.touch_screen ? std::string(tr(Msg::HoldToReply)) : tr(Msg::ButtonToReply, {talk});

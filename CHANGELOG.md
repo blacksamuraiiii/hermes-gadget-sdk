@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0
+## 0.3.0
 
 ### This fork (moji)
 
@@ -26,9 +26,27 @@ costs a few hundred bytes rather than a new bitmap and can move.
 - `notes/设计-小墨表情.md` records the measured geometry and the two rounds of
   comparison against the design sheet (ink IoU 0.70 at 240 px).
 
-## 0.3.0
+The screen is one 16 px face for Chinese and Latin. The 12 px bitmap era read
+"Thinking" as "Ihinking" on hardware, because the Latin glyphs were 8.4 px tall and
+the 1-bit threshold cut `T`'s crossbar, `E`/`F`'s arms and `j`'s hook.
 
-### This fork (moji)
+- Noto Sans SC Medium at 16 px draws both scripts: Chinese ink inside a 22 px line
+  box, Latin at em16 (cap height 11 px, 31 % taller than the bitmap era) on the same
+  baseline, with 4x supersampling down to 1-bit. The table carries 6783 code points,
+  `℃` and `°` included; text is folded before it reaches the panel, so `20°C` shows as
+  `20℃` instead of `20?`.
+- The no-touch board drops the settings band for a 36 px arc clearance band: the
+  header dot, the title and the divider no longer sit under the round edge.
+- Body rows go from 2 to 4 (the text band holds 5), long replies still page.
+- The reply header reads `Running` (breathing dot) before audio, `Speaking` during
+  playback, `Ready` (solid dot) once done.
+- The robot face fills the glass again, so the antenna is no longer clipped; its ball
+  doubles as the link lamp (green online, yellow connecting, red offline, white pole),
+  replacing the separate dot at the top.
+- Speech says `62%` as 「62个百分点」 (range, sign and full-width forms included) while
+  the screen keeps `%`, in the same place `22°C` becomes 「摄氏度」.
+- A face-to-text page switch no longer leaves antenna pixels above the header band
+  (they looked like stray dots over the first word).
 
 This fork ports one board — Movecall moji (ESP32-S3-WROOM-1-N16R8, 240×240 GC9A01 round panel,
 one ES8311 with an analog microphone, USB power) — and talks to Hermes over USB through

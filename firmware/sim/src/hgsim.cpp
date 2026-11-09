@@ -39,6 +39,7 @@ class SimHal final : public hg::Display,
     info_.round = cfg.round != 0;
     if (cfg.round_area_permille > 0) info_.round_area_permille = static_cast<uint16_t>(cfg.round_area_permille);
     info_.no_bottom_bar = cfg.no_bottom_bar != 0;
+    info_.no_top_band = cfg.no_top_band != 0;
     info_.body_rows_cap = static_cast<uint8_t>(cfg.body_rows_cap);
   }
 

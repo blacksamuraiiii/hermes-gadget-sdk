@@ -181,6 +181,24 @@ _TEMP_ONE = re.compile(r"(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*" + _TEMP_C)
 _TEMP_BARE = re.compile(_TEMP_C)
 
 
+_PERCENT_RANGE = re.compile(
+    r"(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*[~～\-–—至到]\s*([-+]?\d+(?:\.\d+)?)\s*[%％]")
+_PERCENT_ONE = re.compile(r"(?<![\d.])([-+]?\d+(?:\.\d+)?)\s*[%％]")
+_PERCENT_BARE = re.compile(r"[%％]")
+
+
+def speak_percent(text: str) -> str:
+    """Write percentages the way a Chinese voice says them.
+
+    A zh-CN voice reads ``62%`` in English ("percent"), and this device's reporting
+    is Chinese statistics, where the same figure is spoken 百分点. Only the spoken
+    copy is rewritten; the screen still draws the plain % sign.
+    """
+    text = _PERCENT_RANGE.sub(lambda m: f"{m.group(1)}到{m.group(2)}个百分点", text or "")
+    text = _PERCENT_ONE.sub(lambda m: f"{m.group(1)}个百分点", text)
+    return _PERCENT_BARE.sub("个百分点", text)
+
+
 def speak_celsius(text: str) -> str:
     """Write temperatures the way a Chinese voice says them.
 
