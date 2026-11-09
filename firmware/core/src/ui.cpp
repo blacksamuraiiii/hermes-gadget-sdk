@@ -1012,13 +1012,18 @@ void Ui::hero_anim_rows(const UiModel& m, int& y0, int& y1) const {
       break;
     default: break;
   }
-  if (m.robot) {  // her own face fills the box, and is drawn larger than it
-    const int margin = static_cast<int>(static_cast<float>(size) * (robot::zoom() - 1.0f) / 2) + 2;
+  if (m.robot || m.emoji) {  // a board's own face fills the box, and is drawn larger than it
+    // The emoji face has no mascot anchors: its eyes live at another y, and a mood's
+    // extras reach above and below them. Repaint the whole frame it occupies — the
+    // per-py anchors only covered the top half, so the lower half of a blink or an
+    // idle glance never got flushed.
+    const float zoom = m.robot ? robot::zoom() : emoji::zoom();
+    const int margin = static_cast<int>(static_cast<float>(size) * (zoom - 1.0f) / 2) + 2;
     add(my - margin, my + size + margin);
   }
   y0 = std::max(top - 1, panel_.no_top_band ? 0 : layout_.top_h);
-  y1 = std::min(bottom + 2, m.robot ? static_cast<int>(info_.height)
-                                    : static_cast<int>(info_.height) - layout_.bottom_h);
+  y1 = std::min(bottom + 2, (m.robot || m.emoji) ? static_cast<int>(info_.height)
+                                                 : static_cast<int>(info_.height) - layout_.bottom_h);
 }
 
 void Ui::draw_hero(Canvas& c, const UiModel& m) {
