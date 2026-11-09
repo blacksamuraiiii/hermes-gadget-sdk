@@ -73,6 +73,8 @@ struct UiModel {
   // deserved. It outranks notice, emote and the screen until it expires.
   emoji::Look look = emoji::Look::Neutral;
   bool look_set = false;
+  // The wake cue ("我在") is playing: that is a greeting, not a reply.
+  bool wake_cue = false;
   // A face the state alone does not explain: happy for a moment after a wake hit, sad
   // for a moment after a turn with no speech, sleeping after a long idle, silly
   // when a turn is not understood (no trigger sets it yet). Auto means

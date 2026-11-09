@@ -1972,6 +1972,7 @@ void App::update_model() {
   m.notice = notice_face_;
   m.look_set = static_cast<int32_t>(now() - named_look_until_) < 0;
   m.look = named_look_;
+  m.wake_cue = wake_awaiting_cue_ && speaking();
   if (m.emoji) {
     m.hero = true;
     m.headline.clear();

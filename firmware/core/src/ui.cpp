@@ -146,6 +146,9 @@ emoji::Look emoji_look(const UiModel& m) {
     case Link::Offline: return emoji::Look::Disconnected;
     case Link::Online: break;
   }
+  // The wake cue is her answering to her name, not reporting a reply: she waves the
+  // maracas instead of opening the speaking mouth (user, 2026-11-09).
+  if (m.wake_cue) return emoji::Look::Happy;
   // The mouth has to match the sound: a named face waits for the playback to end.
   if (m.screen == Screen::Responding && m.speaking) return emoji::Look::Speaking;
   // A reminder speaks before the resting face does: the user has to act on it, and on
